@@ -1,0 +1,33 @@
+# Postgres de desenvolvimento. A API e o app web rodam no host, por npm.
+# Não há imagem de produção neste projeto.
+#
+# As variáveis vêm do `.env` da raiz, que o docker compose lê sozinho.
+# Os defaults abaixo mantêm `docker compose up -d` funcionando sem `.env` nenhum.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kikos-crm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kikos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kikos}
+      POSTGRES_DB: ${POSTGRES_DB:-kikos_crm}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      # Volume nomeado, não bind mount: os dados do banco ficam fora da árvore
+      # do repositório e `git status` continua limpo depois de subir tudo.
+      - kikos-crm-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-kikos} -d ${POSTGRES_DB:-kikos_crm}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kikos-crm-pgdata:

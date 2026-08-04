@@ -1,0 +1,21 @@
+{
+  "name": "@kikos/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API HTTP do Kikos CRM",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kikos/domain": "^0.0.0",
+    "effect": "^3.22.1",
+    "fastify": "^5.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "tsx": "^4.23.5"
+  }
+}

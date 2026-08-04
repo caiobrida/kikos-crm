@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+package-lock.json
+
+# O rastreador de issues é entrada de trabalho, não código-fonte.
+# Reformatar spec e tickets só geraria ruído no diff.
+.scratch/

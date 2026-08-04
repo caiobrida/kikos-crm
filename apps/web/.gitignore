@@ -1,0 +1,10 @@
+# Só o que o Vite gera de único neste pacote. Tudo que é transversal
+# (node_modules, dist, .env, logs) está no .gitignore da raiz — o padrão do
+# git já é recursivo, e repetir as mesmas linhas por pacote gera divergência.
+
+# arquivos de ambiente locais do Vite
+*.local
+
+# configuração reescrita em tempo de execução quando o Vite recarrega o config
+vite.config.ts.timestamp-*
+vite.config.js.timestamp-*
