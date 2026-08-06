@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 /**
@@ -42,6 +42,9 @@ export const Modal = ({
   footer,
 }: ModalProps) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // Um id por instância: mais de um modal pode estar montado ao mesmo tempo,
+  // e dois `id` iguais no documento quebram o `aria-labelledby` dos dois.
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -67,7 +70,7 @@ export const Modal = ({
       // o estado de quem chama acompanha o diálogo sem tratar tecla na mão.
       onClose={onClose}
       onClick={handleClick}
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
       className={cn(
         'm-auto rounded-card bg-surface-900 p-0 text-ink shadow-2xl ring-1 ring-surface-600',
         'backdrop:bg-surface-950/80 backdrop:backdrop-blur-sm',
@@ -77,7 +80,7 @@ export const Modal = ({
       <div className="flex h-full max-h-[92vh] flex-col">
         <header className="flex items-start justify-between gap-4 border-b border-surface-700 px-6 py-4">
           <div>
-            <h2 id="modal-title" className="text-lg font-semibold text-ink">
+            <h2 id={titleId} className="text-lg font-semibold text-ink">
               {title}
             </h2>
             {description !== undefined ? (

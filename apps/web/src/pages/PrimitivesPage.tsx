@@ -147,7 +147,9 @@ export const PrimitivesPage = () => {
             required
             error="Informe um e-mail válido."
           >
-            <Input id="demo-email" defaultValue="ana@" invalid />
+            {/* Sem `invalid` aqui: o `error` do Field já marca o controle e o
+                liga à mensagem por `aria-describedby`. */}
+            <Input id="demo-email" defaultValue="ana@" />
           </Field>
 
           <Field

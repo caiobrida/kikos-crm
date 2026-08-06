@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 // do código que exercitam, em `src/**/*.test.ts`.
 export default defineConfig({
   test: {
-    include: ['{apps,packages}/*/src/**/*.test.ts'],
+    include: ['{apps,packages}/*/src/**/*.test.{ts,tsx}'],
     environment: 'node',
   },
 });

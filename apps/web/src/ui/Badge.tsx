@@ -1,4 +1,5 @@
 import type { DealResult, DealStage, LeadStatus } from '@kikos/domain';
+import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { DEAL_RESULT_LABELS, DEAL_STAGE_LABELS, LEAD_STATUS_LABELS } from '../lib/labels';
 
@@ -36,7 +37,7 @@ export interface BadgeProps {
   /** O ponto colorido ajuda a distinguir os tons sem depender só da cor do texto. */
   readonly withDot?: boolean;
   readonly className?: string;
-  readonly children: React.ReactNode;
+  readonly children: ReactNode;
 }
 
 export const Badge = ({
