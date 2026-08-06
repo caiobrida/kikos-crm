@@ -39,3 +39,34 @@ export const SessionUser = Schema.Struct({
 
 export type SessionUser = typeof SessionUser.Type;
 export type SessionUserEncoded = typeof SessionUser.Encoded;
+
+/**
+ * O User como ele aparece **dentro** de outro registro: o responsável de um
+ * Lead ou de um Deal.
+ *
+ * Só o que a célula da tabela desenha — o nome vira as iniciais do avatar, e o
+ * identificador liga o filtro de vendedor à linha. Carregar e-mail e cargo em
+ * cada uma das dez linhas de uma página seria repetir dado que ninguém lê ali.
+ */
+export const UserSummary = Schema.Struct({
+  id: UserId,
+  name: Schema.String,
+});
+
+export type UserSummary = typeof UserSummary.Type;
+
+/**
+ * O recorte pedido a `GET /users`.
+ *
+ * `?role=SELLER` é o que alimenta o filtro de vendedor da lista de Leads e, mais
+ * adiante, a tela de Vendedores. Sem o parâmetro a rota devolve o time inteiro.
+ */
+export const UserListQuery = Schema.Struct({
+  role: Schema.optional(UserRole),
+});
+
+export type UserListQuery = typeof UserListQuery.Type;
+
+/** O corpo de `GET /users`: o time em ordem alfabética. */
+export const UserList = Schema.Array(SessionUser);
+export type UserList = typeof UserList.Type;

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from './layout/AppShell';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
 import { PrimitivesPage } from './pages/PrimitivesPage';
 import { RequireAuth } from './routes/RequireAuth';
@@ -31,15 +32,7 @@ export const App = () => (
           }
         />
 
-        <Route
-          path="/leads"
-          element={
-            <ComingSoonPage
-              title="Leads"
-              description="A carteira de contatos, com busca, filtros, ordenação e paginação resolvidos no servidor."
-            />
-          }
-        />
+        <Route path="/leads" element={<LeadsPage />} />
 
         <Route
           path="/negocios"

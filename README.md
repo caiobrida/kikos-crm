@@ -19,6 +19,11 @@ npm run db:seed      # popula o banco com os usuários de exemplo
 npm run dev          # sobe a API e o app web juntos
 ```
 
+O `docker compose` cria o banco com collation **ICU pt-BR**, para que ordenar a lista por nome
+não jogue "Álvaro" depois de "Zeta". O `initdb` só roda com o volume vazio: quem já tinha o
+Postgres de pé antes disso precisa de um `docker compose down -v` antes do `up`, e depois refaz
+`db:migrate` e `db:seed`.
+
 | O quê    | Endereço                                   |
 | -------- | ------------------------------------------ |
 | App web  | http://localhost:5173                      |
@@ -31,7 +36,7 @@ O prefixo `/api` é convenção do proxy: a API serve o contrato sem prefixo (`/
 
 ### Credenciais de exemplo
 
-O seed cria um gestor e três vendedores, todos com a senha **`kikos123`**:
+O seed cria um gestor, três vendedores e catorze Leads. A senha de todos é **`kikos123`**:
 
 | E-mail                       | Nome               | Papel     |
 | ---------------------------- | ------------------ | --------- |
@@ -40,10 +45,29 @@ O seed cria um gestor e três vendedores, todos com a senha **`kikos123`**:
 | `caio.brida@kikos.com.br`    | Caio Brida         | `SELLER`  |
 | `maria.silva@kikos.com.br`   | Maria da Silva     | `SELLER`  |
 
-Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores — telas que as
-fatias seguintes constroem. A **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar,
-modal e tabela nas suas variações) continua em <http://localhost:5173/primitivas>; o selo no topo
-dela consulta `/api/health`, e se estiver verde o proxy e a API estão de pé.
+Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
+primeira tela de dados pronta; Dashboard, Negócios e Vendedores vêm nas fatias seguintes. A
+**vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
+variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
+`/api/health`, e se estiver verde o proxy e a API estão de pé.
+
+## Consulta sempre no servidor
+
+Busca, filtro, ordenação e paginação acontecem no banco, sem exceção — não existe `filter`,
+`sort` nem `slice` sobre os dados em tela nenhuma. As listagens respondem
+`{ data, page, pageSize, total }`, e é o `total` que alimenta o contador: ele descreve o recorte
+inteiro, não as linhas que couberam na página.
+
+Duas consequências que valem registrar:
+
+- Os parâmetros de consulta são Schemas do pacote compartilhado. `sortBy` e `status` são uniões
+  fechadas, então nada do que alguém digitar na URL chega perto de virar coluna num `ORDER BY` —
+  e um `?page=0` é recusado com 400 e o campo culpado apontado, como um formulário inválido.
+- Toda ordenação carrega o `id` como último critério. Sem uma ordem total, duas linhas empatadas
+  podem trocar de lugar entre a consulta da página 1 e a da página 2, e um registro some ou
+  aparece duas vezes.
+
+No app web, a busca é atrasada em 300ms: digitar "ritmo" dispara uma requisição, não cinco.
 
 ## Estrutura
 
@@ -130,7 +154,19 @@ pull request — **sem serviço de banco**. Isso é possível porque os reposit�
 `Context.Tag` com uma Layer em memória alternativa à de Prisma: os testes de API exercitam
 rota, Schema, autenticação e mapa de erro sem Postgres nenhum (ADR-0002).
 
-O trade-off é consciente: as queries do Prisma não têm cobertura automatizada.
+O trade-off é consciente: as queries do Prisma não têm cobertura automatizada. Onde as duas
+Layers podem discordar sem que teste algum veja, a divergência foi fechada na origem — a
+ordenação de texto, por uma collation ICU no banco; os curingas do `LIKE`, por escape no
+repositório de Prisma. Para conferir esse caminho à mão, com o banco de pé e o seed aplicado:
+
+```bash
+curl -s -c /tmp/kikos.txt -X POST localhost:3333/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"rodrigo.ramos@kikos.com.br","password":"kikos123"}' > /dev/null
+
+curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=_'      # total 0, não 14
+curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=ritmo'  # total 2
+```
 
 ## Effect
 

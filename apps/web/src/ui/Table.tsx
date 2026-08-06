@@ -65,6 +65,51 @@ export const TableHeadCell = ({ children, className, ...rest }: TableHeadCellPro
   </th>
 );
 
+export interface TableSortHeadCellProps {
+  readonly children: ReactNode;
+  /** Se esta é a coluna pela qual a lista está ordenada agora. */
+  readonly active: boolean;
+  /** A direção vigente — só significa alguma coisa quando `active`. */
+  readonly order: 'asc' | 'desc';
+  readonly onSort: () => void;
+  readonly className?: string;
+}
+
+/**
+ * O cabeçalho que ordena ao ser clicado, e inverte ao ser clicado de novo.
+ *
+ * A ordenação em si acontece no servidor: este componente não sabe o que é um
+ * Lead, só avisa que a coluna foi pedida. `aria-sort` é o que faz um leitor de
+ * tela anunciar "ordenado crescente" — a setinha sozinha não diz nada a quem
+ * não enxerga a tela.
+ */
+export const TableSortHeadCell = ({
+  children,
+  active,
+  order,
+  onSort,
+  className,
+}: TableSortHeadCellProps) => (
+  <TableHeadCell
+    aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+    className={cn('p-0', className)}
+  >
+    <button
+      type="button"
+      onClick={onSort}
+      className={cn(
+        'flex w-full items-center gap-1.5 px-4 py-3 text-left whitespace-nowrap uppercase transition-colors',
+        active ? 'text-ink' : 'hover:text-ink',
+      )}
+    >
+      {children}
+      <span aria-hidden="true" className={cn('text-[0.6rem]', !active && 'opacity-0')}>
+        {order === 'asc' ? '▲' : '▼'}
+      </span>
+    </button>
+  </TableHeadCell>
+);
+
 export interface TableCellProps {
   readonly children: ReactNode;
   readonly className?: string;

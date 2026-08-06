@@ -61,6 +61,21 @@ export const LEAD_STATUSES = [
   'LOST',
 ] as const satisfies readonly LeadStatus[];
 
+/**
+ * Por qual canal o Lead chegou ao time. Existe para responder depois "quais
+ * canais trazem contato bom", então `OTHER` é a saída de emergência e não o
+ * default de quem não quis escolher.
+ */
+export const LeadSource = Schema.Literal(
+  'WEBSITE',
+  'REFERRAL',
+  'SOCIAL_MEDIA',
+  'EVENT',
+  'OUTBOUND',
+  'OTHER',
+);
+export type LeadSource = typeof LeadSource.Type;
+
 /** O papel de um User. Rótulo para listar vendedores, não regra de acesso. */
 export const UserRole = Schema.Literal('MANAGER', 'SELLER');
 export type UserRole = typeof UserRole.Type;

@@ -1,13 +1,20 @@
 import { HealthResponse } from '@kikos/domain';
 import { describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
+import { Layer } from 'effect';
+import { LeadRepositoryInMemory } from './repositories/LeadRepository';
 import { UserRepositoryInMemory } from './repositories/UserRepository';
 import { makeRuntime } from './runtime';
 import { buildServer } from './server';
 
 /** `/health` não consulta nada, mas o servidor exige um runtime para montar. */
 const buildHealthServer = () =>
-  buildServer({ runtime: makeRuntime(UserRepositoryInMemory([])), logger: false });
+  buildServer({
+    runtime: makeRuntime(
+      Layer.mergeAll(UserRepositoryInMemory([]), LeadRepositoryInMemory([], [])),
+    ),
+    logger: false,
+  });
 
 describe('GET /health', () => {
   it('responde 200 no contrato que o pacote de domínio define', async () => {

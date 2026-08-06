@@ -1,7 +1,7 @@
 // O modelo de dados do Kikos CRM.
 //
-// Nesta fatia existe só o `User`: a identidade única do sistema, tanto de quem
-// faz login quanto de quem recebe Leads e Deals (ADR-0001). Lead, Deal e
+// `User` é a identidade única do sistema, tanto de quem faz login quanto de
+// quem recebe Leads e Deals (ADR-0001). `Lead` é o contato comercial. Deal e
 // Comment entram nas fatias seguintes.
 
 generator client {
@@ -24,6 +24,30 @@ enum UserRole {
   SELLER
 }
 
+/// A situação do relacionamento com o Lead. Vocabulário distinto do Stage do
+/// Deal, e sincronizado pelas ações de Deal com a regra "último evento vence".
+///
+/// A ordem de declaração é a ordem do funil, e não é decorativa: um `ORDER BY`
+/// sobre uma coluna `enum` no Postgres usa exatamente esta sequência, que é o
+/// que faz a tabela ordenar por status de um jeito que significa alguma coisa.
+enum LeadStatus {
+  NEW
+  CONTACT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+/// Por qual canal o Lead chegou ao time.
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  SOCIAL_MEDIA
+  EVENT
+  OUTBOUND
+  OTHER
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   name         String
@@ -37,8 +61,57 @@ model User {
   /// (ADR-0004).
   tokenVersion Int @default(0)
 
+  leads Lead[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+/// Um contato comercial — a pessoa e a empresa com quem se conversa. Existe
+/// independentemente de haver negócio.
+model Lead {
+  id      String @id @default(uuid()) @db.Uuid
+  name    String
+  company String
+
+  /// **Não é único, de propósito.** Com remoção lógica, a linha apagada
+  /// continuaria ocupando o índice e impediria recadastrar o mesmo contato
+  /// depois.
+  email String
+  phone String
+
+  /// O cargo do contato na empresa dele. Opcional no cadastro.
+  jobTitle String?
+  source   LeadSource
+  status   LeadStatus @default(NEW)
+
+  /// O vendedor responsável. Sem `onDelete`: o CRM não remove Users, e o
+  /// default do Postgres (`RESTRICT`) é justamente a recusa que se quer se
+  /// alguém tentar.
+  ownerId String @db.Uuid
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  /// O campo livre do Lead. Comentário é coisa de Deal (ver CONTEXT.md).
+  notes String?
+
+  /// O momento do último acontecimento relevante. Escrito pelas ações do
+  /// domínio, não derivado do comentário mais recente.
+  lastInteractionAt DateTime @default(now())
+
+  /// Remoção lógica. O filtro que a respeita mora na camada de repositório,
+  /// nunca nas rotas. Nasce aqui mesmo sem rota de remoção ainda, para não
+  /// gerar uma migration extra na fatia que a implementa.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Os índices dos três recortes que a lista de Leads oferece. `deletedAt`
+  /// entra em todos porque toda consulta começa excluindo os removidos.
+  @@index([deletedAt, ownerId])
+  @@index([deletedAt, status])
+  @@index([deletedAt, lastInteractionAt])
+  @@map("leads")
 }

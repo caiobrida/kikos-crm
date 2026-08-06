@@ -11,4 +11,6 @@ export * from './enums';
 export * from './errors';
 export * from './health';
 export * from './ids';
+export * from './lead';
+export * from './pagination';
 export * from './user';

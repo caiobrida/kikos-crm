@@ -59,6 +59,14 @@ export const UserRepositoryPrisma: Layer.Layer<UserRepository> = Layer.scoped(
 
       findById: (id) => findUnique({ id }),
 
+      list: (query) =>
+        Effect.promise(() =>
+          prisma.user.findMany({
+            where: query.role === undefined ? {} : { role: query.role },
+            orderBy: { name: 'asc' },
+          }),
+        ).pipe(Effect.map((rows) => rows.map(toRecord))),
+
       incrementTokenVersion: (id) =>
         Effect.promise(() =>
           prisma.user.updateMany({
