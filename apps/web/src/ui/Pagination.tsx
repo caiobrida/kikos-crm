@@ -16,10 +16,12 @@ export interface PaginationProps {
  * é o que responde "onde estou e quanto falta".
  */
 export const Pagination = ({ page, pageSize, total, onPageChange }: PaginationProps) => {
-  const lastPage = Math.max(1, Math.ceil(total / pageSize));
-
-  // Uma página só não é navegação, é ruído.
+  // Recorte vazio não tem o que navegar, e o estado vazio da tabela já disse
+  // o que houve. Com uma página só a navegação fica, desabilitada: o "1–7 de 7"
+  // continua sendo a resposta a "estou vendo tudo?".
   if (total === 0) return null;
+
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
 
   const first = (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);

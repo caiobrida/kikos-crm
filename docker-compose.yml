@@ -13,6 +13,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-kikos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kikos}
       POSTGRES_DB: ${POSTGRES_DB:-kikos_crm}
+      # A ordenação de texto do banco, em ICU pt-BR.
+      #
+      # Sem isto o Postgres compara byte a byte, e a lista de Leads ordenada por
+      # nome traria "Álvaro" depois de "Zeta" — o tipo de coisa que um usuário
+      # lê como defeito. É também o que faz a Layer em memória dos testes
+      # concordar com o banco: `localeCompare('pt-BR')` produz esta mesma ordem.
+      #
+      # `initdb` só roda quando o volume está vazio. Um volume criado antes
+      # desta linha mantém a ordenação antiga até `docker compose down -v`.
+      POSTGRES_INITDB_ARGS: '--locale-provider=icu --icu-locale=pt-BR --encoding=UTF8 --locale=C'
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:

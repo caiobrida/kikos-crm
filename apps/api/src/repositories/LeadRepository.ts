@@ -36,13 +36,17 @@ export interface LeadRecord {
 }
 
 /**
- * O Lead com o responsável já resolvido — o resultado do `JOIN`.
+ * Uma linha da lista: o Lead com o responsável já resolvido pelo `JOIN`, e sem
+ * o que a tabela não desenha.
  *
- * O formato bate com o Schema `Lead` do pacote compartilhado, e é o compilador
- * quem cobra que continue batendo: a rota codifica este valor com aquele
- * Schema, e um campo a mais ou a menos quebra o typecheck.
+ * O formato bate com o Schema `LeadListItem` do pacote compartilhado, e é o
+ * compilador quem cobra que continue batendo: a rota codifica este valor com
+ * aquele Schema, e um campo a mais ou a menos quebra o typecheck.
  */
-export type LeadWithOwner = Omit<LeadRecord, 'ownerId' | 'deletedAt'> & {
+export type LeadWithOwner = Omit<
+  LeadRecord,
+  'ownerId' | 'deletedAt' | 'jobTitle' | 'notes'
+> & {
   readonly owner: UserSummary;
 };
 
@@ -102,10 +106,20 @@ const compareBy = (
   owners: ReadonlyMap<UserId, UserSummary>,
 ): ((a: LeadRecord, b: LeadRecord) => number) => {
   switch (sortBy) {
+    /*
+     * `localeCompare('pt-BR')` e não `<`: para o Postgres concordar, o banco
+     * é criado com collation ICU pt-BR (ver `docker-compose.yml`). Com a
+     * collation padrão, que compara byte a byte, "Álvaro" cairia depois de
+     * "Zeta" — e os dois lados da seam discordariam sem que teste algum visse.
+     */
     case 'name':
       return (a, b) => a.name.localeCompare(b.name, 'pt-BR');
     case 'company':
       return (a, b) => a.company.localeCompare(b.company, 'pt-BR');
+    case 'email':
+      return (a, b) => a.email.localeCompare(b.email, 'pt-BR');
+    case 'phone':
+      return (a, b) => a.phone.localeCompare(b.phone, 'pt-BR');
     case 'status':
       /*
        * A ordem do funil, não a do dicionário. No Postgres isto sai de graça:
@@ -169,7 +183,13 @@ export const LeadRepositoryInMemory = (
           );
         }
 
-        const { ownerId: _ownerId, deletedAt: _deletedAt, ...rest } = lead;
+        const {
+          ownerId: _ownerId,
+          deletedAt: _deletedAt,
+          jobTitle: _jobTitle,
+          notes: _notes,
+          ...rest
+        } = lead;
         return { ...rest, owner };
       };
 

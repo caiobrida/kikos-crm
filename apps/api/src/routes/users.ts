@@ -1,4 +1,4 @@
-import { SessionUser, UserListQuery } from '@kikos/domain';
+import { UserList, UserListQuery } from '@kikos/domain';
 import { Effect, Schema } from 'effect';
 import type { FastifyInstance } from 'fastify';
 import { toSessionUser } from '../auth/session';
@@ -17,8 +17,6 @@ import type { AppRuntime } from '../runtime';
  * igual a `SELLER`, e é por isso que a rota é `/users?role=SELLER` e não
  * `/sellers`.
  */
-const TeamResponse = Schema.Array(SessionUser);
-
 export const registerUserRoutes = (app: FastifyInstance, runtime: AppRuntime): void => {
   const run = makeRunner(runtime);
   const authenticate = makeAuthenticate(runtime);
@@ -37,7 +35,8 @@ export const registerUserRoutes = (app: FastifyInstance, runtime: AppRuntime): v
     );
 
     return run(reply, program, (reply, team) =>
-      reply.send(Schema.encodeSync(TeamResponse)(team)),
+      // O mesmo Schema que o app web usa para decodificar a resposta.
+      reply.send(Schema.encodeSync(UserList)(team)),
     );
   });
 };

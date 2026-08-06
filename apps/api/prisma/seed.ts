@@ -43,6 +43,10 @@ interface SeedLead {
 /*
  * Catorze contatos: mais de uma página com o tamanho padrão de dez, o que faz a
  * paginação da tela aparecer sem que ninguém precise cadastrar nada antes.
+ *
+ * Todos são de vendedores. O modelo aceita qualquer User como responsável — o
+ * `role` é rótulo, não regra (ADR-0001) —, mas a tela oferece os vendedores, e
+ * dado de exemplo que não aparece no filtro só confunde quem está avaliando.
  */
 const LEADS: readonly SeedLead[] = [
   {
@@ -161,8 +165,8 @@ const LEADS: readonly SeedLead[] = [
     jobTitle: 'Gerente de Unidade',
     source: 'OUTBOUND',
     status: 'NEGOTIATION',
-    owner: 'rodrigo.ramos@kikos.com.br',
-    notes: 'Conta grande. Rodrigo assumiu pessoalmente.',
+    owner: 'caio.brida@kikos.com.br',
+    notes: 'Conta grande, com compra centralizada pela matriz.',
     lastInteractionDaysAgo: 10,
   },
   {
@@ -209,7 +213,7 @@ const LEADS: readonly SeedLead[] = [
     jobTitle: 'Gerente Geral',
     source: 'OTHER',
     status: 'WON',
-    owner: 'rodrigo.ramos@kikos.com.br',
+    owner: 'maria.silva@kikos.com.br',
     notes: 'Equipou a academia do hotel. Cliente satisfeito, pode indicar a rede.',
     lastInteractionDaysAgo: 25,
   },

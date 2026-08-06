@@ -19,6 +19,11 @@ npm run db:seed      # popula o banco com os usuários de exemplo
 npm run dev          # sobe a API e o app web juntos
 ```
 
+O `docker compose` cria o banco com collation **ICU pt-BR**, para que ordenar a lista por nome
+não jogue "Álvaro" depois de "Zeta". O `initdb` só roda com o volume vazio: quem já tinha o
+Postgres de pé antes disso precisa de um `docker compose down -v` antes do `up`, e depois refaz
+`db:migrate` e `db:seed`.
+
 | O quê    | Endereço                                   |
 | -------- | ------------------------------------------ |
 | App web  | http://localhost:5173                      |
@@ -149,7 +154,19 @@ pull request — **sem serviço de banco**. Isso é possível porque os reposit�
 `Context.Tag` com uma Layer em memória alternativa à de Prisma: os testes de API exercitam
 rota, Schema, autenticação e mapa de erro sem Postgres nenhum (ADR-0002).
 
-O trade-off é consciente: as queries do Prisma não têm cobertura automatizada.
+O trade-off é consciente: as queries do Prisma não têm cobertura automatizada. Onde as duas
+Layers podem discordar sem que teste algum veja, a divergência foi fechada na origem — a
+ordenação de texto, por uma collation ICU no banco; os curingas do `LIKE`, por escape no
+repositório de Prisma. Para conferir esse caminho à mão, com o banco de pé e o seed aplicado:
+
+```bash
+curl -s -c /tmp/kikos.txt -X POST localhost:3333/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"rodrigo.ramos@kikos.com.br","password":"kikos123"}' > /dev/null
+
+curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=_'      # total 0, não 14
+curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=ritmo'  # total 2
+```
 
 ## Effect
 

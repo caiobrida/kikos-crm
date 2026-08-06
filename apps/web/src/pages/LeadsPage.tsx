@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { formatLastInteraction } from '../lib/dates';
 import { INITIAL_LEADS_VIEW, useLeads, type LeadsView } from '../lib/leads';
 import { LEAD_STATUS_LABELS } from '../lib/labels';
-import { useTeam } from '../lib/team';
+import { useSellers } from '../lib/sellers';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { Avatar } from '../ui/Avatar';
 import { LeadStatusBadge } from '../ui/Badge';
@@ -15,7 +15,6 @@ import {
   TableCell,
   TableEmpty,
   TableHead,
-  TableHeadCell,
   TableRow,
   TableSortHeadCell,
 } from '../ui/Table';
@@ -30,16 +29,22 @@ import {
  * a base tiver dez mil contatos, esta tela continuará carregando dez linhas.
  */
 
-/** Só as colunas que a API aceita ordenar; as demais são cabeçalho comum. */
-const SORTABLE_COLUMNS = {
-  name: 'Nome',
-  company: 'Empresa',
-  owner: 'Responsável',
-  status: 'Status',
-  lastInteractionAt: 'Última interação',
-} as const satisfies Record<LeadSortBy, string>;
-
-const COLUMN_COUNT = 7;
+/**
+ * As colunas da tabela, na ordem em que aparecem.
+ *
+ * A chave é o valor que vai para `?sortBy=`, e o tipo cobra que ela pertença à
+ * união que a API aceita: renomear uma coluna no domínio quebra o typecheck
+ * aqui, em vez de virar um 400 quando alguém clicar no cabeçalho.
+ */
+const COLUMNS: readonly { readonly key: LeadSortBy; readonly label: string }[] = [
+  { key: 'name', label: 'Nome' },
+  { key: 'company', label: 'Empresa' },
+  { key: 'email', label: 'E-mail' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'owner', label: 'Responsável' },
+  { key: 'status', label: 'Status' },
+  { key: 'lastInteractionAt', label: 'Última interação' },
+];
 
 const countLabel = (total: number): string => {
   if (total === 0) return 'Nenhum contato';
@@ -48,7 +53,7 @@ const countLabel = (total: number): string => {
 
 export const LeadsPage = () => {
   const [view, setView] = useState<LeadsView>(INITIAL_LEADS_VIEW);
-  const team = useTeam();
+  const sellers = useSellers();
 
   /*
    * A busca digitada e a busca consultada são duas coisas diferentes: o campo
@@ -131,9 +136,9 @@ export const LeadsPage = () => {
             onChange={(event) => refine({ ownerId: event.target.value })}
           >
             <option value="">Todos os responsáveis</option>
-            {(team.data ?? []).map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
+            {(sellers.data ?? []).map((seller) => (
+              <option key={seller.id} value={seller.id}>
+                {seller.name}
               </option>
             ))}
           </Select>
@@ -152,51 +157,24 @@ export const LeadsPage = () => {
       <Table>
         <TableHead>
           <tr>
-            <TableSortHeadCell
-              active={view.sortBy === 'name'}
-              order={view.order}
-              onSort={() => sortBy('name')}
-            >
-              {SORTABLE_COLUMNS.name}
-            </TableSortHeadCell>
-            <TableSortHeadCell
-              active={view.sortBy === 'company'}
-              order={view.order}
-              onSort={() => sortBy('company')}
-            >
-              {SORTABLE_COLUMNS.company}
-            </TableSortHeadCell>
-            <TableHeadCell>E-mail</TableHeadCell>
-            <TableHeadCell>Telefone</TableHeadCell>
-            <TableSortHeadCell
-              active={view.sortBy === 'owner'}
-              order={view.order}
-              onSort={() => sortBy('owner')}
-            >
-              {SORTABLE_COLUMNS.owner}
-            </TableSortHeadCell>
-            <TableSortHeadCell
-              active={view.sortBy === 'status'}
-              order={view.order}
-              onSort={() => sortBy('status')}
-            >
-              {SORTABLE_COLUMNS.status}
-            </TableSortHeadCell>
-            <TableSortHeadCell
-              active={view.sortBy === 'lastInteractionAt'}
-              order={view.order}
-              onSort={() => sortBy('lastInteractionAt')}
-            >
-              {SORTABLE_COLUMNS.lastInteractionAt}
-            </TableSortHeadCell>
+            {COLUMNS.map(({ key, label }) => (
+              <TableSortHeadCell
+                key={key}
+                active={view.sortBy === key}
+                order={view.order}
+                onSort={() => sortBy(key)}
+              >
+                {label}
+              </TableSortHeadCell>
+            ))}
           </tr>
         </TableHead>
 
         <TableBody>
           {page === undefined ? (
-            <TableEmpty colSpan={COLUMN_COUNT}>Carregando…</TableEmpty>
+            <TableEmpty colSpan={COLUMNS.length}>Carregando…</TableEmpty>
           ) : page.data.length === 0 ? (
-            <TableEmpty colSpan={COLUMN_COUNT}>
+            <TableEmpty colSpan={COLUMNS.length}>
               Nenhum contato neste recorte. Tente afrouxar a busca ou os filtros.
             </TableEmpty>
           ) : (

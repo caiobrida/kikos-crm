@@ -12,17 +12,15 @@ import { LeadRepository, type LeadWithOwner } from './LeadRepository';
  * tradução de um recorte já validado para SQL, e não regra de negócio.
  */
 
-/** O `SELECT` da listagem: as colunas do Lead mais o nome do responsável. */
+/** O `SELECT` da listagem: as colunas que a tabela desenha, e só elas. */
 const LIST_SELECT = {
   id: true,
   name: true,
   company: true,
   email: true,
   phone: true,
-  jobTitle: true,
   source: true,
   status: true,
-  notes: true,
   lastInteractionAt: true,
   // O `JOIN`, escrito como relação: o responsável vem junto de cada linha, em
   // vez de uma consulta por Lead depois.
@@ -38,28 +36,48 @@ const toLeadWithOwner = (row: LeadRow): LeadWithOwner => ({
 });
 
 /**
+ * Neutraliza os curingas do `LIKE` dentro do que o usuário digitou.
+ *
+ * O `contains` do Prisma vira `ILIKE '%termo%'`, e o termo entra no padrão sem
+ * tratamento: uma busca por `_` sozinho casaria com **todas** as linhas, porque
+ * `_` significa "um caractere qualquer". A barra invertida é o escape padrão do
+ * `LIKE` no Postgres, e por isso precisa ser a primeira a ser escapada.
+ *
+ * Não é questão de segurança — o termo viaja como parâmetro, não concatenado —,
+ * é de significado: aqui a busca casa com o que está escrito, como a Layer em
+ * memória já fazia com `includes`.
+ */
+const escapeLikeWildcards = (term: string): string =>
+  term.replace(/[\\%_]/g, (wildcard) => `\\${wildcard}`);
+
+/**
  * O `WHERE` da listagem.
  *
  * A primeira condição é a que não pode faltar em consulta nenhuma: registro
  * removido não existe para quem lê. Ela mora aqui, e não na rota, porque uma
  * rota nova que esquecesse a cláusula faria um contato apagado reaparecer.
  */
-const whereFrom = (query: LeadListQuery): Prisma.LeadWhereInput => ({
-  deletedAt: null,
-  ...(query.status === undefined ? {} : { status: query.status }),
-  ...(query.ownerId === undefined ? {} : { ownerId: query.ownerId }),
-  ...(query.search === undefined
-    ? {}
-    : {
-        // `mode: 'insensitive'` vira `ILIKE '%termo%'`: buscar "RITMO" acha
-        // "Academia Ritmo".
-        OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { company: { contains: query.search, mode: 'insensitive' } },
-          { email: { contains: query.search, mode: 'insensitive' } },
-        ],
-      }),
-});
+const whereFrom = (query: LeadListQuery): Prisma.LeadWhereInput => {
+  const search =
+    query.search === undefined ? undefined : escapeLikeWildcards(query.search);
+
+  return {
+    deletedAt: null,
+    ...(query.status === undefined ? {} : { status: query.status }),
+    ...(query.ownerId === undefined ? {} : { ownerId: query.ownerId }),
+    ...(search === undefined
+      ? {}
+      : {
+          // `mode: 'insensitive'` vira `ILIKE`: buscar "RITMO" acha "Academia
+          // Ritmo".
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { company: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        }),
+  };
+};
 
 /** A coluna pedida, mais o desempate que torna a paginação confiável. */
 const orderByFrom = (

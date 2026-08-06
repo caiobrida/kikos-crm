@@ -12,7 +12,13 @@ import {
 import { Email, UserSummary } from './user';
 
 /**
- * O Lead como ele sai da API.
+ * Um Lead como uma linha da lista o mostra.
+ *
+ * São exatamente as sete colunas da tabela, e nada além delas. `jobTitle` e
+ * `notes` ficam de fora pelo mesmo motivo que o `owner` vem enxuto: são texto
+ * livre que nenhuma linha desenha, e repeti-los em cada uma das dez linhas de
+ * cada página seria tráfego que ninguém lê. Eles chegam com o detalhamento do
+ * Lead, na fatia que abre o modal.
  *
  * O responsável vem embutido e já resolvido: a tabela desenha o avatar dele em
  * toda linha, e mandar só o `ownerId` obrigaria a tela a buscar os vendedores
@@ -22,41 +28,40 @@ import { Email, UserSummary } from './user';
  * repositório — nenhuma tela precisa saber que a coluna existe, e um campo que
  * não existe no Schema não tem como vazar num `GET` distraído.
  */
-export const Lead = Schema.Struct({
+export const LeadListItem = Schema.Struct({
   id: LeadId,
   name: Schema.String,
   company: Schema.String,
   email: Email,
   phone: Schema.String,
-  /** O cargo do contato na empresa dele. Opcional no cadastro. */
-  jobTitle: Schema.NullOr(Schema.String),
   source: LeadSource,
   status: LeadStatus,
   owner: UserSummary,
-  notes: Schema.NullOr(Schema.String),
   /** `Schema.DateFromString`: string ISO no JSON, `Date` no código. */
   lastInteractionAt: Schema.DateFromString,
 });
 
-export type Lead = typeof Lead.Type;
-export type LeadEncoded = typeof Lead.Encoded;
+export type LeadListItem = typeof LeadListItem.Type;
+export type LeadListItemEncoded = typeof LeadListItem.Encoded;
 
 /** Uma página de Leads — o que `GET /leads` responde. */
-export const LeadPage = Paginated(Lead);
-export type LeadPage = Paginated<Lead>;
+export const LeadPage = Paginated(LeadListItem);
+export type LeadPage = Paginated<LeadListItem>;
 
 /**
- * As colunas por onde a tabela deixa ordenar.
+ * As colunas por onde a tabela deixa ordenar — todas as que ela mostra.
  *
  * A união fechada é o que impede a query string de virar um vetor de injeção:
- * `?sortBy=` só aceita um destes cinco nomes, e o repositório traduz o nome
- * para a coluna. Nada do que o usuário digita chega ao `ORDER BY`.
+ * `?sortBy=` só aceita um destes nomes, e o repositório traduz o nome para a
+ * coluna. Nada do que o usuário digita chega ao `ORDER BY`.
  */
 export const LeadSortBy = Schema.Literal(
   'name',
   'company',
-  'status',
+  'email',
+  'phone',
   'owner',
+  'status',
   'lastInteractionAt',
 );
 export type LeadSortBy = typeof LeadSortBy.Type;

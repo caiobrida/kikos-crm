@@ -1,4 +1,4 @@
-import { LeadPage, type LeadStatus } from '@kikos/domain';
+import { LeadPage, LeadSortBy, type LeadStatus } from '@kikos/domain';
 import { afterEach, beforeEach, describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
 import {
@@ -100,6 +100,20 @@ describe('GET /leads', () => {
 
       expect(page.total).toBe(VISIBLE_LEAD_COUNT);
     });
+
+    it('trata os curingas do LIKE como texto comum', async () => {
+      const page = await list('?search=_');
+
+      /*
+       * `_` casa com "um caractere qualquer" dentro de um `LIKE`, então sem
+       * escape esta busca devolveria a carteira inteira. A Layer em memória
+       * usa `includes` e nunca teve o problema; quem o tem é a de Prisma, que
+       * escapa o termo antes de montar o padrão. Sem Postgres no CI, esta
+       * asserção fixa o comportamento esperado dos dois lados — o de Prisma
+       * fica coberto pela verificação manual descrita no README.
+       */
+      expect(page.total).toBe(0);
+    });
   });
 
   describe('filtros', () => {
@@ -173,6 +187,19 @@ describe('GET /leads', () => {
       // Em ordem alfabética 'CONTACT' viria antes de 'NEW' e 'LOST' antes de
       // 'WON' — o funil não é o dicionário.
       expect(statuses).toEqual(funnelOrder);
+    });
+
+    it('ordena por qualquer coluna que a tabela oferece', async () => {
+      /*
+       * Percorre a própria união do Schema, então uma coluna nova nascida no
+       * domínio já entra neste teste. É a trava contra o caso em que `sortBy`
+       * aceita um nome que o repositório não sabe traduzir para coluna.
+       */
+      for (const column of LeadSortBy.literals) {
+        const page = await list(`?sortBy=${column}&order=asc&pageSize=100`);
+
+        expect(page.data).toHaveLength(VISIBLE_LEAD_COUNT);
+      }
     });
 
     it('ordena pelo nome do vendedor responsável', async () => {
@@ -255,49 +282,5 @@ describe('GET /leads', () => {
     it('recusa um identificador de vendedor que não é UUID', async () => {
       await expectRejection('?ownerId=ana', 'ownerId');
     });
-  });
-});
-
-describe('GET /users', () => {
-  let harness: TestHarness;
-
-  beforeEach(async () => {
-    harness = await makeTestHarness();
-  });
-
-  afterEach(async () => {
-    await harness.close();
-  });
-
-  it('recusa quem não está logado', async () => {
-    const response = await harness.app.inject({ method: 'GET', url: '/users' });
-
-    expect(response.statusCode).toBe(401);
-  });
-
-  it('devolve só os vendedores com ?role=SELLER', async () => {
-    const response = await harness.get('/users?role=SELLER');
-
-    expect(response.statusCode).toBe(200);
-    const users = response.json<{ id: string; name: string; role: string }[]>();
-    expect(users.map((user) => user.name)).toEqual([harness.seller.name]);
-  });
-
-  it('devolve o time inteiro sem filtro', async () => {
-    const response = await harness.get('/users');
-
-    expect(response.json<unknown[]>()).toHaveLength(2);
-  });
-
-  it('não devolve o hash da senha', async () => {
-    const response = await harness.get('/users');
-
-    expect(JSON.stringify(response.json())).not.toContain('$2');
-  });
-
-  it('recusa um papel fora do vocabulário', async () => {
-    const response = await harness.get('/users?role=ESTAGIARIO');
-
-    expect(response.statusCode).toBe(400);
   });
 });

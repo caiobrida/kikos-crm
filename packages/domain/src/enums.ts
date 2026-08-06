@@ -76,15 +76,6 @@ export const LeadSource = Schema.Literal(
 );
 export type LeadSource = typeof LeadSource.Type;
 
-export const LEAD_SOURCES = [
-  'WEBSITE',
-  'REFERRAL',
-  'SOCIAL_MEDIA',
-  'EVENT',
-  'OUTBOUND',
-  'OTHER',
-] as const satisfies readonly LeadSource[];
-
 /** O papel de um User. Rótulo para listar vendedores, não regra de acesso. */
 export const UserRole = Schema.Literal('MANAGER', 'SELLER');
 export type UserRole = typeof UserRole.Type;

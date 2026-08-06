@@ -66,3 +66,7 @@ export const UserListQuery = Schema.Struct({
 });
 
 export type UserListQuery = typeof UserListQuery.Type;
+
+/** O corpo de `GET /users`: o time em ordem alfabética. */
+export const UserList = Schema.Array(SessionUser);
+export type UserList = typeof UserList.Type;

@@ -147,7 +147,6 @@ export interface TestHarness {
   readonly app: FastifyInstance;
   readonly manager: UserRecord;
   readonly seller: UserRecord;
-  readonly leads: readonly LeadRecord[];
   /**
    * Um GET já autenticado como o gestor — o caminho normal de toda tela do CRM.
    * A sessão é aberta uma vez na montagem, para não pagar um bcrypt por teste.
@@ -205,7 +204,6 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
     app,
     manager,
     seller,
-    leads,
     get: (url) =>
       app.inject({ method: 'GET', url, cookies: { [ACCESS_COOKIE]: accessToken } }),
     close: async () => {
