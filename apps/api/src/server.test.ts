@@ -1,11 +1,17 @@
 import { HealthResponse } from '@kikos/domain';
 import { describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
+import { UserRepositoryInMemory } from './repositories/UserRepository';
+import { makeRuntime } from './runtime';
 import { buildServer } from './server';
+
+/** `/health` não consulta nada, mas o servidor exige um runtime para montar. */
+const buildHealthServer = () =>
+  buildServer({ runtime: makeRuntime(UserRepositoryInMemory([])), logger: false });
 
 describe('GET /health', () => {
   it('responde 200 no contrato que o pacote de domínio define', async () => {
-    const app = buildServer({ logger: false });
+    const app = buildHealthServer();
 
     const response = await app.inject({ method: 'GET', url: '/health' });
 
@@ -24,7 +30,7 @@ describe('GET /health', () => {
   });
 
   it('responde 404 numa rota que não existe', async () => {
-    const app = buildServer({ logger: false });
+    const app = buildHealthServer();
 
     const response = await app.inject({ method: 'GET', url: '/nao-existe' });
 

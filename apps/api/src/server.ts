@@ -1,9 +1,19 @@
+import fastifyCookie from '@fastify/cookie';
 import { HealthResponse } from '@kikos/domain';
 import { Schema } from 'effect';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { config } from './config';
+import { registerAuthRoutes } from './routes/auth';
+import type { AppRuntime } from './runtime';
 
 export interface BuildServerOptions {
+  /**
+   * O runtime que resolve as dependências dos programas Effect. Produção passa
+   * o construído sobre Prisma; os testes passam um sobre a Layer em memória —
+   * é a seam que os deixa exercitar rota, Schema, autenticação e mapa de erro
+   * sem banco nenhum.
+   */
+  readonly runtime: AppRuntime;
   /** Desligado nos testes para não poluir a saída. */
   readonly logger?: boolean;
 }
@@ -15,12 +25,19 @@ export interface BuildServerOptions {
  * `app.inject()` — requisição de verdade, pela pilha inteira do Fastify, sem
  * porta aberta e sem banco.
  */
-export const buildServer = (options: BuildServerOptions = {}): FastifyInstance => {
+export const buildServer = (options: BuildServerOptions): FastifyInstance => {
   const app = Fastify({
     logger: (options.logger ?? true) && {
       level: config.nodeEnv === 'development' ? 'info' : 'warn',
     },
   });
+
+  /*
+   * Sem `secret`: os cookies de sessão não são assinados pelo Fastify porque
+   * o que viaja dentro deles já é um JWT assinado. Assinar duas vezes só
+   * acrescentaria um segredo a gerenciar.
+   */
+  void app.register(fastifyCookie);
 
   app.get('/health', () => {
     /*
@@ -35,6 +52,8 @@ export const buildServer = (options: BuildServerOptions = {}): FastifyInstance =
       checkedAt: new Date(),
     });
   });
+
+  registerAuthRoutes(app, options.runtime);
 
   return app;
 };

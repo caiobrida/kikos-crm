@@ -6,5 +6,9 @@
  * os tipos do Node e o ESLint barra os imports de servidor — as duas travas
  * existem para que a regra falhe no CI em vez de falhar no build do Vite.
  */
+export * from './auth';
 export * from './enums';
+export * from './errors';
 export * from './health';
+export * from './ids';
+export * from './user';

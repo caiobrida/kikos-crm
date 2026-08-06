@@ -1,0 +1,44 @@
+// O modelo de dados do Kikos CRM.
+//
+// Nesta fatia existe só o `User`: a identidade única do sistema, tanto de quem
+// faz login quanto de quem recebe Leads e Deals (ADR-0001). Lead, Deal e
+// Comment entram nas fatias seguintes.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "nodejs"
+}
+
+// A URL de conexão não mora mais aqui: desde o Prisma 7 ela fica em
+// `prisma.config.ts` (para as migrations) e no adapter passado ao
+// `PrismaClient` (para o runtime).
+datasource db {
+  provider = "postgresql"
+}
+
+/// O papel de um User. Rótulo para listar vendedores, não regra de acesso:
+/// qualquer User autenticado enxerga e altera tudo (ADR-0001).
+enum UserRole {
+  MANAGER
+  SELLER
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+
+  /// Entra no payload do token e é conferido contra esta coluna a cada
+  /// requisição. O logout incrementa o número, o que invalida de verdade todos
+  /// os tokens daquele User — em vez de só pedir ao navegador que os esqueça
+  /// (ADR-0004).
+  tokenVersion Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}

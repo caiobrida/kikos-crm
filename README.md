@@ -14,6 +14,8 @@ Pré-requisitos: **Node 22+** e **Docker**.
 npm install          # instala os três workspaces de uma vez
 cp .env.example .env # um .env único serve o monorepo inteiro
 docker compose up -d # sobe o Postgres
+npm run db:migrate   # cria as tabelas
+npm run db:seed      # popula o banco com os usuários de exemplo
 npm run dev          # sobe a API e o app web juntos
 ```
 
@@ -27,10 +29,21 @@ Em desenvolvimento o Vite proxia `/api` para a API, então o navegador fala com 
 O prefixo `/api` é convenção do proxy: a API serve o contrato sem prefixo (`/health`,
 `/auth/login`, `/leads`…).
 
-Abrir <http://localhost:5173> mostra hoje a **página de demonstração das primitivas** — botão,
-campo, selo, avatar, modal e tabela nas suas variações. É a fundação visual que as telas do CRM
-reusam. O selo no topo da página consulta `/api/health`: se ele estiver verde, o proxy e a API
-estão de pé.
+### Credenciais de exemplo
+
+O seed cria um gestor e três vendedores, todos com a senha **`kikos123`**:
+
+| E-mail                       | Nome               | Papel     |
+| ---------------------------- | ------------------ | --------- |
+| `rodrigo.ramos@kikos.com.br` | Rodrigo Ramos      | `MANAGER` |
+| `ana.nogueira@kikos.com.br`  | Ana Paula Nogueira | `SELLER`  |
+| `caio.brida@kikos.com.br`    | Caio Brida         | `SELLER`  |
+| `maria.silva@kikos.com.br`   | Maria da Silva     | `SELLER`  |
+
+Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores — telas que as
+fatias seguintes constroem. A **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar,
+modal e tabela nas suas variações) continua em <http://localhost:5173/primitivas>; o selo no topo
+dela consulta `/api/health`, e se estiver verde o proxy e a API estão de pé.
 
 ## Estrutura
 
@@ -72,6 +85,40 @@ não existe "buildar o domínio antes de subir os apps".
 | `npm run check`        | os quatro acima, na ordem em que o CI roda |
 | `npm run db:up`        | sobe o Postgres                            |
 | `npm run db:down`      | derruba o Postgres                         |
+| `npm run db:migrate`   | aplica as migrations                       |
+| `npm run db:seed`      | popula o banco com os dados de exemplo     |
+| `npm run db:reset`     | derruba, recria e popula o banco           |
+
+## Autenticação
+
+Login com e-mail e senha, JWT próprio, sem provedor externo. O raciocínio completo está em
+[ADR-0004](./docs/adr/0004-httponly-cookies-with-token-version.md); em resumo:
+
+- Os tokens viajam em cookies **`httpOnly`** — o JavaScript da página não os enxerga, ao
+  contrário do que aconteceria com `localStorage`. Como o Vite proxia `/api`, tudo é same-origin
+  e não há CORS com credenciais.
+- São dois: um **access de 15 minutos** e um **refresh de 7 dias**, este restrito por `path` à
+  rota que o consome. O `path` do cookie inclui o prefixo `/api` porque o navegador o compara
+  com a URL que pede ao Vite, não com a rota que a API serve.
+- `User.tokenVersion` entra no payload assinado e é conferido contra o banco **a cada
+  requisição**. O logout incrementa a coluna, o que invalida de verdade todos os tokens daquele
+  User — em vez de apenas pedir ao navegador que esqueça o cookie.
+- No app web, `apiJson` concentra a renovação: ao receber 401 ele renova e refaz a chamada, e
+  requisições concorrentes **compartilham uma única promise** de renovação. Três telas que
+  expirem juntas disparam uma chamada a `/auth/refresh`, não três.
+- Hash de senha com `bcryptjs`, escolhido por ser JS puro: `argon2` exigiria toolchain de
+  compilação na máquina de quem clona o repositório.
+
+Autorização é binária: qualquer User autenticado enxerga e altera tudo. `role` é rótulo para
+listar vendedores, não regra de acesso (ADR-0001).
+
+### Erros como dados
+
+Todo erro de domínio é um `Data.TaggedError` em `packages/domain/src/errors.ts`, e a tradução
+para HTTP acontece num único lugar — `apps/api/src/http/errors.ts` — por `switch` exaustivo sobre
+a tag. Um erro novo acrescentado à união `DomainError` sem mapeamento **quebra `tsc --noEmit` no
+CI**, em vez de virar 500 em produção. É o valor concreto de tratar erro como dado, e o mapa
+cresce a cada fatia.
 
 ## Testes e CI
 
