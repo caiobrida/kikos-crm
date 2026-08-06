@@ -24,7 +24,17 @@ export const useSession = () =>
      * chegar até aqui.
      */
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    /*
+     * Reconferir a sessão ao voltar para a aba é o que faz uma aba esquecida
+     * aberta levar para o login em vez de continuar mostrando o CRM. É o outro
+     * lado da consequência aceita no ADR-0004: sair em um navegador derruba as
+     * sessões daquele User em todos os outros.
+     *
+     * Os 30 segundos evitam uma requisição a cada alt-tab, e o custo quando ela
+     * acontece é uma leitura por chave primária.
+     */
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
   });
 
 export const useLogin = () => {

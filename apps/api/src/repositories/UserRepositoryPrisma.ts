@@ -39,23 +39,25 @@ export const UserRepositoryPrisma: Layer.Layer<UserRepository> = Layer.scoped(
       (client) => Effect.promise(() => client.$disconnect()),
     );
 
-    return {
-      /*
-       * `Effect.promise` é para a Promise que não se espera que rejeite: uma
-       * falha vira defeito (500), não erro de domínio. Banco fora do ar não é
-       * uma regra de negócio, e não deve aparecer no `switch` de erro para HTTP.
-       */
-      findByEmail: (email) =>
-        Effect.promise(() => prisma.user.findUnique({ where: { email } })).pipe(
-          Effect.map(Option.fromNullable),
-          Effect.map(Option.map(toRecord)),
-        ),
+    /*
+     * As duas buscas diferem só pela coluna do `where`.
+     *
+     * `Effect.promise` é para a Promise que não se espera que rejeite: uma
+     * falha vira defeito (500), não erro de domínio. Banco fora do ar não é uma
+     * regra de negócio, e não deve aparecer no `switch` de erro para HTTP.
+     */
+    const findUnique = (
+      where: { id: string } | { email: string },
+    ): Effect.Effect<Option.Option<UserRecord>> =>
+      Effect.promise(() => prisma.user.findUnique({ where })).pipe(
+        Effect.map(Option.fromNullable),
+        Effect.map(Option.map(toRecord)),
+      );
 
-      findById: (id) =>
-        Effect.promise(() => prisma.user.findUnique({ where: { id } })).pipe(
-          Effect.map(Option.fromNullable),
-          Effect.map(Option.map(toRecord)),
-        ),
+    return {
+      findByEmail: (email) => findUnique({ email }),
+
+      findById: (id) => findUnique({ id }),
 
       incrementTokenVersion: (id) =>
         Effect.promise(() =>

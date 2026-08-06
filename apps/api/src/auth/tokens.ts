@@ -29,12 +29,11 @@ export interface SessionClaims {
   readonly kind: TokenKind;
 }
 
-const TTL_BY_KIND: Record<TokenKind, number> = {
+/** A validade de cada tipo, usada tanto no `exp` do token quanto no cookie. */
+export const TOKEN_TTL_SECONDS: Record<TokenKind, number> = {
   access: config.auth.accessTokenTtlSeconds,
   refresh: config.auth.refreshTokenTtlSeconds,
 };
-
-export const tokenTtlSeconds = (kind: TokenKind): number => TTL_BY_KIND[kind];
 
 export const signToken = async (claims: SessionClaims): Promise<string> => {
   const nowInSeconds = Math.floor(Date.now() / 1000);
@@ -43,7 +42,7 @@ export const signToken = async (claims: SessionClaims): Promise<string> => {
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.userId)
     .setIssuedAt(nowInSeconds)
-    .setExpirationTime(nowInSeconds + TTL_BY_KIND[claims.kind])
+    .setExpirationTime(nowInSeconds + TOKEN_TTL_SECONDS[claims.kind])
     .sign(secret);
 };
 

@@ -27,7 +27,6 @@ export const App = () => (
             <ComingSoonPage
               title="Dashboard"
               description="O valor parado em cada Stage do funil, o comparativo por vendedor e a tabela de negócios."
-              slice="11 — Dashboard"
             />
           }
         />
@@ -38,7 +37,6 @@ export const App = () => (
             <ComingSoonPage
               title="Leads"
               description="A carteira de contatos, com busca, filtros, ordenação e paginação resolvidos no servidor."
-              slice="03 — Lista de Leads"
             />
           }
         />
@@ -49,7 +47,6 @@ export const App = () => (
             <ComingSoonPage
               title="Negócios"
               description="O funil como board, uma coluna por Stage, com arrastar para registrar o avanço da negociação."
-              slice="05 — Board de Negócios"
             />
           }
         />
@@ -60,7 +57,6 @@ export const App = () => (
             <ComingSoonPage
               title="Vendedores"
               description="Quem pode receber Leads e Negócios, com avatar, nome e e-mail."
-              slice="13 — Tela de Vendedores"
             />
           }
         />

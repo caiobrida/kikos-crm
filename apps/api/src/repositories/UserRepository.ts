@@ -35,6 +35,12 @@ export interface UserRecord {
  *
  * Nenhum método tem canal de erro: "não encontrado" é um `Option`, e banco fora
  * do ar é defeito, não erro de domínio — vira 500, não um `switch` a mais.
+ *
+ * `Option<A>` é o `A | null` do TypeScript comum, escrito como dado: ou
+ * `Option.some(valor)` ou `Option.none()`. A diferença prática é que ele não se
+ * confunde com um valor legítimo — um `Option<string>` vazio é distinguível de
+ * uma string vazia — e que `Option.match`, `Option.map` e `Option.isNone`
+ * obrigam a dizer o que fazer nos dois casos.
  */
 export class UserRepository extends Context.Tag('UserRepository')<
   UserRepository,

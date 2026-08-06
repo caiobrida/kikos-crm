@@ -3,8 +3,8 @@ import type { FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'f
 import { authenticateAccessToken } from '../auth/session';
 import type { UserRecord } from '../repositories/UserRepository';
 import type { AppRuntime } from '../runtime';
-import { ACCESS_COOKIE, readCookie } from './cookies';
-import { toHttpError } from './errors';
+import { ACCESS_COOKIE } from './cookies';
+import { sendDomainError } from './run';
 
 /*
  * O middleware de autenticação.
@@ -43,15 +43,12 @@ export const makeAuthenticate = (runtime: AppRuntime): preHandlerAsyncHookHandle
     reply: FastifyReply,
   ): Promise<FastifyReply | undefined> {
     const outcome = await runtime.runPromise(
-      Effect.either(authenticateAccessToken(readCookie(request, ACCESS_COOKIE))),
+      Effect.either(authenticateAccessToken(request.cookies[ACCESS_COOKIE])),
     );
 
-    if (Either.isLeft(outcome)) {
-      const { status, body } = toHttpError(outcome.left);
-      // Responder de dentro de um preHandler interrompe a cadeia: o handler
-      // da rota não chega a rodar.
-      return reply.status(status).send(body);
-    }
+    // Responder de dentro de um preHandler interrompe a cadeia: o handler da
+    // rota não chega a rodar.
+    if (Either.isLeft(outcome)) return sendDomainError(reply, outcome.left);
 
     request.currentUser = outcome.right;
     return undefined;

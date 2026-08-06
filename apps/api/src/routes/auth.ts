@@ -6,8 +6,8 @@ import { makeAuthenticate, requireCurrentUser } from '../http/authenticate';
 import {
   REFRESH_COOKIE,
   clearSessionCookies,
+  issueAccessCookie,
   issueSessionCookies,
-  readCookie,
 } from '../http/cookies';
 import { makeRunner } from '../http/run';
 import { decodeBody } from '../http/validation';
@@ -17,15 +17,6 @@ import type { AppRuntime } from '../runtime';
 /** Codifica o User para JSON com o mesmo Schema que o app web decodifica. */
 const sendSessionUser = (reply: FastifyReply, user: UserRecord): FastifyReply =>
   reply.send(Schema.encodeSync(SessionUser)(toSessionUser(user)));
-
-/** Renova os cookies e devolve o User — a resposta de login e de refresh. */
-const startSession = async (
-  reply: FastifyReply,
-  user: UserRecord,
-): Promise<FastifyReply> => {
-  await issueSessionCookies(reply, user);
-  return sendSessionUser(reply, user);
-};
 
 export const registerAuthRoutes = (app: FastifyInstance, runtime: AppRuntime): void => {
   const run = makeRunner(runtime);
@@ -39,18 +30,28 @@ export const registerAuthRoutes = (app: FastifyInstance, runtime: AppRuntime): v
      */
     const program = decodeBody(LoginRequest, request.body).pipe(Effect.flatMap(login));
 
-    return run(reply, program, startSession);
+    return run(reply, program, async (reply, user) => {
+      await issueSessionCookies(reply, user);
+      return sendSessionUser(reply, user);
+    });
   });
 
   /*
    * A renovação silenciosa. Aceita **apenas** o token de refresh, que o
    * navegador só envia para esta rota por causa do `path` do cookie.
+   *
+   * Reemite só o access: o refresh continua o que o login gravou, e seus 7 dias
+   * contam a partir da senha digitada. Renová-lo aqui também faria a validade
+   * deslizar a cada 15 minutos e nunca vencer para quem usa o CRM todo dia.
    */
   app.post('/auth/refresh', (request, reply) =>
     run(
       reply,
-      authenticateRefreshToken(readCookie(request, REFRESH_COOKIE)),
-      startSession,
+      authenticateRefreshToken(request.cookies[REFRESH_COOKIE]),
+      async (reply, user) => {
+        await issueAccessCookie(reply, user);
+        return sendSessionUser(reply, user);
+      },
     ),
   );
 

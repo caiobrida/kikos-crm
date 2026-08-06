@@ -16,6 +16,18 @@ export type OnSuccess<A> = (
   value: A,
 ) => FastifyReply | Promise<FastifyReply>;
 
+/**
+ * Traduz um erro de domínio e responde. Único ponto de envio de falha na API —
+ * o `runHandler` abaixo e o middleware de autenticação passam os dois por aqui.
+ */
+export const sendDomainError = (
+  reply: FastifyReply,
+  error: DomainError,
+): FastifyReply => {
+  const { status, body } = toHttpError(error);
+  return reply.status(status).send(body);
+};
+
 export interface EffectRunner {
   <A>(
     reply: FastifyReply,
@@ -37,10 +49,7 @@ export const makeRunner =
   async (reply, program, onSuccess) => {
     const outcome = await runtime.runPromise(Effect.either(program));
 
-    if (Either.isLeft(outcome)) {
-      const { status, body } = toHttpError(outcome.left);
-      return reply.status(status).send(body);
-    }
+    if (Either.isLeft(outcome)) return sendDomainError(reply, outcome.left);
 
     return onSuccess === undefined
       ? reply.send(outcome.right)

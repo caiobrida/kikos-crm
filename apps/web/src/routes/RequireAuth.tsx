@@ -30,7 +30,12 @@ export const RequireAuth = () => {
 
   if (session.isPending) return <CheckingSession />;
 
-  if (session.data === undefined) {
+  /*
+   * `isError` importa tanto quanto `data`: numa reconferência que falha, o
+   * TanStack Query mantém o último User bem-sucedido em `data`. Olhar só para
+   * ele deixaria a tela montada com uma sessão que o servidor já recusou.
+   */
+  if (session.isError || session.data === undefined) {
     // `state.from` leva a pessoa de volta ao que ela tentou abrir, depois de
     // entrar — em vez de despejá-la sempre no Dashboard.
     return (

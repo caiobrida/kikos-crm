@@ -80,3 +80,22 @@ com os Schemas compartilhados entra na fatia 04, que é onde há formulário par
 fetch é módulo puro, sem React, então dá para exercitá-lo com um `fetch` de mentira sem sair da
 regra "sem testes de componente de UI". O teste conta as chamadas a `/auth/refresh` quando três
 requisições tomam 401 juntas.
+
+**O `ManagedRuntime` carrega só a Layer de repositório, não as três da spec.** A spec descreve o
+runtime "com as Layers de repositório, autenticação e relógio", mas as Testing Decisions da mesma
+spec dizem que os repositórios são a *única* substituição do projeto, mais o `TestClock` que já
+vem pronto do Effect. Autenticação virou módulo comum (`auth/password.ts`, `auth/tokens.ts`):
+trocar bcrypt ou JWT por duble esconderia exatamente o que o teste de senha errada precisa
+exercitar. O relógio entra quando `closedAt` existir, na fatia 09.
+
+**`/auth/refresh` reemite só o access.** A primeira versão reemitia os dois, o que fazia os 7 dias
+do refresh deslizarem a cada renovação e nunca vencerem para quem usa o CRM todo dia. O ADR-0004
+diz "um access de 15 minutos e um refresh de 7 dias" — os 7 dias contam desde a senha digitada.
+Um teste fixa isso.
+
+**A expiração de sessão em aba aberta precisa de reconferência.** O `RequireAuth` sozinho só
+decide na montagem, então uma aba deixada aberta continuaria mostrando o CRM depois de um logout
+feito em outro navegador — a consequência que o ADR-0004 aceita. A consulta de sessão passou a
+reconferir ao voltar o foco para a aba (com 30s de folga), e o `RequireAuth` olha para `isError`
+além de `data`, porque o TanStack Query mantém o último valor bem-sucedido quando uma
+reconferência falha.

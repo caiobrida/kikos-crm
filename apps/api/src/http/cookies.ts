@@ -1,6 +1,6 @@
 import type { CookieSerializeOptions } from '@fastify/cookie';
-import type { FastifyReply, FastifyRequest } from 'fastify';
-import { signToken, tokenTtlSeconds } from '../auth/tokens';
+import type { FastifyReply } from 'fastify';
+import { TOKEN_TTL_SECONDS, signToken } from '../auth/tokens';
 import { config } from '../config';
 import type { UserRecord } from '../repositories/UserRepository';
 
@@ -26,7 +26,7 @@ const baseOptions = {
 const accessOptions: CookieSerializeOptions = {
   ...baseOptions,
   path: '/',
-  maxAge: tokenTtlSeconds('access'),
+  maxAge: TOKEN_TTL_SECONDS.access,
 };
 
 /**
@@ -36,20 +36,41 @@ const accessOptions: CookieSerializeOptions = {
 const refreshOptions: CookieSerializeOptions = {
   ...baseOptions,
   path: config.auth.refreshCookiePath,
-  maxAge: tokenTtlSeconds('refresh'),
+  maxAge: TOKEN_TTL_SECONDS.refresh,
 };
 
-/** Assina os dois tokens com a `tokenVersion` atual e os grava nos cookies. */
+/** O token curto, reemitido a cada renovação silenciosa. */
+export const issueAccessCookie = async (
+  reply: FastifyReply,
+  user: UserRecord,
+): Promise<void> => {
+  const accessToken = await signToken({
+    userId: user.id,
+    tokenVersion: user.tokenVersion,
+    kind: 'access',
+  });
+
+  reply.setCookie(ACCESS_COOKIE, accessToken, accessOptions);
+};
+
+/**
+ * Abre a sessão: os dois tokens, assinados com a `tokenVersion` atual.
+ *
+ * Só o login passa por aqui. A renovação reemite apenas o access, de modo que
+ * os 7 dias do refresh contam a partir da senha digitada — e não deslizam para
+ * sempre a cada renovação, o que faria a validade do ADR-0004 nunca vencer.
+ */
 export const issueSessionCookies = async (
   reply: FastifyReply,
   user: UserRecord,
 ): Promise<void> => {
-  const [accessToken, refreshToken] = await Promise.all([
-    signToken({ userId: user.id, tokenVersion: user.tokenVersion, kind: 'access' }),
-    signToken({ userId: user.id, tokenVersion: user.tokenVersion, kind: 'refresh' }),
-  ]);
+  const refreshToken = await signToken({
+    userId: user.id,
+    tokenVersion: user.tokenVersion,
+    kind: 'refresh',
+  });
 
-  reply.setCookie(ACCESS_COOKIE, accessToken, accessOptions);
+  await issueAccessCookie(reply, user);
   reply.setCookie(REFRESH_COOKIE, refreshToken, refreshOptions);
 };
 
@@ -61,6 +82,3 @@ export const clearSessionCookies = (reply: FastifyReply): void => {
   reply.clearCookie(ACCESS_COOKIE, { path: accessOptions.path ?? '/' });
   reply.clearCookie(REFRESH_COOKIE, { path: refreshOptions.path ?? '/' });
 };
-
-export const readCookie = (request: FastifyRequest, name: string): string | undefined =>
-  request.cookies[name];

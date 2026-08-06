@@ -82,13 +82,13 @@ describe('autenticação', () => {
     });
 
     it('responde a e-mail inexistente exatamente como a senha errada', async () => {
-      const desconhecido = await login('ninguem@kikos.com.br', TEST_PASSWORD);
-      const senhaErrada = await login(harness.manager.email, 'senha-errada');
+      const unknownEmail = await login('ninguem@kikos.com.br', TEST_PASSWORD);
+      const wrongPassword = await login(harness.manager.email, 'senha-errada');
 
       // Diferenciar as duas respostas diria a quem está tentando quais
       // e-mails existem.
-      expect(desconhecido.statusCode).toBe(senhaErrada.statusCode);
-      expect(desconhecido.json()).toEqual(senhaErrada.json());
+      expect(unknownEmail.statusCode).toBe(wrongPassword.statusCode);
+      expect(unknownEmail.json()).toEqual(wrongPassword.json());
     });
 
     it('aceita o e-mail com espaço e caixa alta, porque o Schema normaliza', async () => {
@@ -187,6 +187,21 @@ describe('autenticação', () => {
       expect(response.statusCode).toBe(200);
     });
 
+    it('não reemite o refresh, para que os 7 dias contem desde o login', async () => {
+      const session = await login(harness.manager.email, TEST_PASSWORD);
+
+      const refreshed = await harness.app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        cookies: { [REFRESH_COOKIE]: cookieValue(session.cookies, REFRESH_COOKIE)! },
+      });
+
+      // Regravar o refresh a cada renovação faria a validade do ADR-0004
+      // deslizar para sempre e nunca vencer para quem usa o CRM todo dia.
+      expect(cookieValue(refreshed.cookies, ACCESS_COOKIE)).toBeDefined();
+      expect(cookieValue(refreshed.cookies, REFRESH_COOKIE)).toBeUndefined();
+    });
+
     it('recusa quem não tem cookie de refresh', async () => {
       const response = await harness.app.inject({ method: 'POST', url: '/auth/refresh' });
 
@@ -199,12 +214,12 @@ describe('autenticação', () => {
       const session = await login(harness.manager.email, TEST_PASSWORD);
       const accessToken = cookieValue(session.cookies, ACCESS_COOKIE)!;
 
-      const antes = await harness.app.inject({
+      const before = await harness.app.inject({
         method: 'GET',
         url: '/auth/me',
         cookies: { [ACCESS_COOKIE]: accessToken },
       });
-      expect(antes.statusCode).toBe(200);
+      expect(before.statusCode).toBe(200);
 
       const logout = await harness.app.inject({
         method: 'POST',
@@ -218,12 +233,12 @@ describe('autenticação', () => {
        * agora carrega uma `tokenVersion` defasada. É isto que diferencia sair
        * de verdade de apenas pedir ao navegador que esqueça o cookie.
        */
-      const depois = await harness.app.inject({
+      const after = await harness.app.inject({
         method: 'GET',
         url: '/auth/me',
         cookies: { [ACCESS_COOKIE]: accessToken },
       });
-      expect(depois.statusCode).toBe(401);
+      expect(after.statusCode).toBe(401);
     });
 
     it('invalida também o token de refresh emitido antes dele', async () => {

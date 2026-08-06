@@ -6,7 +6,7 @@ import type { DomainError, ValidationIssue } from '@kikos/domain';
  */
 export interface ErrorBody {
   /** A tag do erro de domínio, como `InvalidCredentials`. */
-  readonly error: string;
+  readonly error: DomainError['_tag'];
   /** Texto em português, pronto para a tela. */
   readonly message: string;
   /** Presente apenas em `ValidationFailed`, para marcar o campo culpado. */
