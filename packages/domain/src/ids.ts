@@ -15,3 +15,7 @@ import { Schema } from 'effect';
 /** O identificador de um User. */
 export const UserId = Schema.UUID.pipe(Schema.brand('UserId'));
 export type UserId = typeof UserId.Type;
+
+/** O identificador de um Lead. */
+export const LeadId = Schema.UUID.pipe(Schema.brand('LeadId'));
+export type LeadId = typeof LeadId.Type;

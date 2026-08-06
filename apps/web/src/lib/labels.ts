@@ -1,4 +1,10 @@
-import type { DealResult, DealStage, LeadStatus, UserRole } from '@kikos/domain';
+import type {
+  DealResult,
+  DealStage,
+  LeadSource,
+  LeadStatus,
+  UserRole,
+} from '@kikos/domain';
 
 /*
  * O mapa único de rótulos: código e banco em inglês, interface em português.
@@ -29,6 +35,15 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   NEGOTIATION: 'Em negociação',
   WON: 'Ganho',
   LOST: 'Perdido',
+};
+
+export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
+  WEBSITE: 'Site',
+  REFERRAL: 'Indicação',
+  SOCIAL_MEDIA: 'Redes sociais',
+  EVENT: 'Evento',
+  OUTBOUND: 'Prospecção ativa',
+  OTHER: 'Outro',
 };
 
 /*

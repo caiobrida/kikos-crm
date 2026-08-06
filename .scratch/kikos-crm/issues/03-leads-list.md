@@ -13,14 +13,14 @@ Tudo isso é resolvido no banco: nenhuma filtragem, ordenação ou paginação a
 
 **Branch:** `feat/leads-list`
 
-- [ ] A tabela mostra os Leads do seed com os selos coloridos corretos por status
-- [ ] Buscar por parte do nome, da empresa ou do e-mail filtra no servidor
-- [ ] Os filtros de status e de vendedor funcionam juntos e combinam com a busca
-- [ ] Clicar num cabeçalho ordena; clicar de novo inverte
-- [ ] A paginação navega, e o contador reflete o total do recorte, não o tamanho da página
-- [ ] Digitar rápido na busca não dispara uma requisição por tecla
-- [ ] Nenhuma filtragem, ordenação ou paginação acontece no navegador
-- [ ] Os avatares mostram as iniciais derivadas do nome do responsável
+- [x] A tabela mostra os Leads do seed com os selos coloridos corretos por status
+- [x] Buscar por parte do nome, da empresa ou do e-mail filtra no servidor
+- [x] Os filtros de status e de vendedor funcionam juntos e combinam com a busca
+- [x] Clicar num cabeçalho ordena; clicar de novo inverte
+- [x] A paginação navega, e o contador reflete o total do recorte, não o tamanho da página
+- [x] Digitar rápido na busca não dispara uma requisição por tecla
+- [x] Nenhuma filtragem, ordenação ou paginação acontece no navegador
+- [x] Os avatares mostram as iniciais derivadas do nome do responsável
 
 ## Decisões que valem lembrar
 

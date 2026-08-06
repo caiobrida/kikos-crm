@@ -31,7 +31,7 @@ O prefixo `/api` é convenção do proxy: a API serve o contrato sem prefixo (`/
 
 ### Credenciais de exemplo
 
-O seed cria um gestor e três vendedores, todos com a senha **`kikos123`**:
+O seed cria um gestor, três vendedores e catorze Leads. A senha de todos é **`kikos123`**:
 
 | E-mail                       | Nome               | Papel     |
 | ---------------------------- | ------------------ | --------- |
@@ -40,10 +40,29 @@ O seed cria um gestor e três vendedores, todos com a senha **`kikos123`**:
 | `caio.brida@kikos.com.br`    | Caio Brida         | `SELLER`  |
 | `maria.silva@kikos.com.br`   | Maria da Silva     | `SELLER`  |
 
-Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores — telas que as
-fatias seguintes constroem. A **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar,
-modal e tabela nas suas variações) continua em <http://localhost:5173/primitivas>; o selo no topo
-dela consulta `/api/health`, e se estiver verde o proxy e a API estão de pé.
+Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
+primeira tela de dados pronta; Dashboard, Negócios e Vendedores vêm nas fatias seguintes. A
+**vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
+variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
+`/api/health`, e se estiver verde o proxy e a API estão de pé.
+
+## Consulta sempre no servidor
+
+Busca, filtro, ordenação e paginação acontecem no banco, sem exceção — não existe `filter`,
+`sort` nem `slice` sobre os dados em tela nenhuma. As listagens respondem
+`{ data, page, pageSize, total }`, e é o `total` que alimenta o contador: ele descreve o recorte
+inteiro, não as linhas que couberam na página.
+
+Duas consequências que valem registrar:
+
+- Os parâmetros de consulta são Schemas do pacote compartilhado. `sortBy` e `status` são uniões
+  fechadas, então nada do que alguém digitar na URL chega perto de virar coluna num `ORDER BY` —
+  e um `?page=0` é recusado com 400 e o campo culpado apontado, como um formulário inválido.
+- Toda ordenação carrega o `id` como último critério. Sem uma ordem total, duas linhas empatadas
+  podem trocar de lugar entre a consulta da página 1 e a da página 2, e um registro some ou
+  aparece duas vezes.
+
+No app web, a busca é atrasada em 300ms: digitar "ritmo" dispara uma requisição, não cinco.
 
 ## Estrutura
 

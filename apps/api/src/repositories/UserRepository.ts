@@ -1,4 +1,4 @@
-import type { UserId, UserRole } from '@kikos/domain';
+import type { UserId, UserListQuery, UserRole } from '@kikos/domain';
 import { Context, Effect, Layer, Option, Ref } from 'effect';
 
 /**
@@ -48,6 +48,11 @@ export class UserRepository extends Context.Tag('UserRepository')<
     /** O e-mail chega já normalizado pelo Schema `Email` (aparado, caixa baixa). */
     readonly findByEmail: (email: string) => Effect.Effect<Option.Option<UserRecord>>;
     readonly findById: (id: UserId) => Effect.Effect<Option.Option<UserRecord>>;
+    /**
+     * O time, em ordem alfabética. Sem paginação de propósito: o time comercial
+     * cabe numa tela, e um `<select>` de responsável não navega por páginas.
+     */
+    readonly list: (query: UserListQuery) => Effect.Effect<readonly UserRecord[]>;
     /** Invalida todos os tokens do User. Não faz nada se o User não existir. */
     readonly incrementTokenVersion: (id: UserId) => Effect.Effect<void>;
   }
@@ -87,6 +92,15 @@ export const UserRepositoryInMemory = (
 
         findById: (id) =>
           Ref.get(store).pipe(Effect.map((users) => Option.fromNullable(users.get(id)))),
+
+        list: (query) =>
+          Ref.get(store).pipe(
+            Effect.map((users) =>
+              [...users.values()]
+                .filter((user) => query.role === undefined || user.role === query.role)
+                .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+            ),
+          ),
 
         incrementTokenVersion: (id) =>
           Ref.update(store, (users) => {

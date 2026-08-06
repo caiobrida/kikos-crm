@@ -1,16 +1,20 @@
 import { Layer, ManagedRuntime } from 'effect';
+import { LeadRepository } from './repositories/LeadRepository';
+import { LeadRepositoryPrisma } from './repositories/LeadRepositoryPrisma';
 import { UserRepository } from './repositories/UserRepository';
 import { UserRepositoryPrisma } from './repositories/UserRepositoryPrisma';
 
 /**
  * Tudo que um programa desta API pode pedir. Cresce uma linha por fatia,
- * conforme os repositórios de Lead, Deal e Comment entram.
+ * conforme os repositórios de Deal e Comment entram.
  */
-export type AppServices = UserRepository;
+export type AppServices = UserRepository | LeadRepository;
 
 /** A composição de produção: os repositórios sobre Prisma. */
-export const AppLayerLive: Layer.Layer<AppServices> =
-  Layer.mergeAll(UserRepositoryPrisma);
+export const AppLayerLive: Layer.Layer<AppServices> = Layer.mergeAll(
+  UserRepositoryPrisma,
+  LeadRepositoryPrisma,
+);
 
 /**
  * `ManagedRuntime` é o que liga o mundo Effect ao mundo Fastify.
