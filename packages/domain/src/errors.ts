@@ -45,7 +45,20 @@ export class Unauthorized extends Data.TaggedError('Unauthorized')<{
 }> {}
 
 /**
+ * O vendedor responsável escolhido não existe. → 404
+ *
+ * É a queixa que separa o que o Schema alcança do que ele não alcança: que o
+ * `ownerId` tem forma de identificador, o formulário confere sozinho; que ele
+ * aponta para alguém do time, só o servidor sabe. A tela pode ter carregado a
+ * lista de vendedores minutos antes.
+ */
+export class OwnerNotFound extends Data.TaggedError('OwnerNotFound')<{
+  readonly message: string;
+}> {}
+
+/**
  * A união de tudo que um programa de domínio pode falhar. Cresce a cada fatia,
  * e é ela que torna o mapa de erro para HTTP verificável pelo compilador.
  */
-export type DomainError = ValidationFailed | InvalidCredentials | Unauthorized;
+export type DomainError =
+  ValidationFailed | InvalidCredentials | Unauthorized | OwnerNotFound;

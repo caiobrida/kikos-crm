@@ -1,12 +1,23 @@
 import {
+  CreateLeadInput,
+  LeadListItem,
   LeadPage,
   type LeadSortBy,
   type LeadStatus,
   type SortOrder,
 } from '@kikos/domain';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { Schema } from 'effect';
 import { apiJson } from './api';
 import { toQueryString } from './queryString';
+
+/** O prefixo de toda consulta de Lead — é por ele que o cadastro as invalida. */
+const leadsQueryKey = ['leads'] as const;
 
 /**
  * O recorte que a tela de Leads está mostrando.
@@ -44,7 +55,7 @@ export const INITIAL_LEADS_VIEW: LeadsView = {
  */
 export const useLeads = (view: LeadsView) =>
   useQuery({
-    queryKey: ['leads', view] as const,
+    queryKey: [...leadsQueryKey, view] as const,
     queryFn: ({ signal }) =>
       apiJson(LeadPage, `/leads${toQueryString({ ...view })}`, { signal }),
     /*
@@ -53,3 +64,31 @@ export const useLeads = (view: LeadsView) =>
      */
     placeholderData: keepPreviousData,
   });
+
+/**
+ * Cadastra um Lead.
+ *
+ * `Schema.encodeSync` é o caminho de volta do mesmo Schema que validou o
+ * formulário: o valor de domínio — aparado, com marca de `UserId`, com
+ * `undefined` no campo opcional em branco — volta à forma que trafega no JSON.
+ * Nenhuma montagem de corpo à mão, e nenhuma chance de a requisição divergir do
+ * que a API espera.
+ *
+ * Invalidar o prefixo `['leads']` derruba **todos** os recortes em cache, não só
+ * o que está na tela: o contato novo pode pertencer a uma busca, a um filtro ou
+ * a uma página que o vendedor visita em seguida. Como a invalidação é aguardada,
+ * a mutação só termina depois que a lista visível voltou do servidor — que é o
+ * que faz o contato "aparecer imediatamente" e não um instante depois.
+ */
+export const useCreateLead = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateLeadInput) =>
+      apiJson(LeadListItem, '/leads', {
+        method: 'POST',
+        body: Schema.encodeSync(CreateLeadInput)(input),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
+  });
+};

@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
-} from 'react';
+import { createContext, useContext, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 const CONTROL =
@@ -108,7 +101,13 @@ export const Field = ({
   );
 };
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+/*
+ * `ComponentProps<'input'>` e não `InputHTMLAttributes`: no React 19 o `ref` é
+ * uma prop comum, e o primeiro tipo a inclui. É o que permite espalhar o
+ * `register('nome')` do react-hook-form direto no controle — ele devolve
+ * `onChange`, `onBlur`, `name` **e** `ref` num objeto só.
+ */
+export interface InputProps extends ComponentProps<'input'> {
   readonly invalid?: boolean;
 }
 
@@ -125,7 +124,7 @@ export const Input = ({ invalid, className, ...rest }: InputProps) => {
   );
 };
 
-export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface TextareaProps extends ComponentProps<'textarea'> {
   readonly invalid?: boolean;
 }
 
@@ -142,7 +141,7 @@ export const Textarea = ({ invalid, className, ...rest }: TextareaProps) => {
   );
 };
 
-export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps extends ComponentProps<'select'> {
   readonly invalid?: boolean;
 }
 

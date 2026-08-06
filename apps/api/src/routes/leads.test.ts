@@ -1,6 +1,7 @@
-import { LeadPage, LeadSortBy, type LeadStatus } from '@kikos/domain';
+import { LeadListItem, LeadPage, LeadSortBy, type LeadStatus } from '@kikos/domain';
 import { afterEach, beforeEach, describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
+import { randomUUID } from 'node:crypto';
 import {
   DELETED_LEAD_NAME,
   VISIBLE_LEAD_COUNT,
@@ -18,27 +19,26 @@ import {
  * navegador, estes testes continuam passando enquanto a rota não regride, e é
  * exatamente por isso que eles vivem deste lado.
  */
+let harness: TestHarness;
+
+beforeEach(async () => {
+  harness = await makeTestHarness();
+});
+
+afterEach(async () => {
+  await harness.close();
+});
+
+/** Faz a consulta autenticada e decodifica com o Schema compartilhado. */
+const list = async (query = ''): Promise<LeadPage> => {
+  const response = await harness.get(`/leads${query}`);
+  expect(response.statusCode).toBe(200);
+  return Schema.decodeUnknownSync(LeadPage)(response.json());
+};
+
+const namesIn = (page: LeadPage): readonly string[] => page.data.map((lead) => lead.name);
+
 describe('GET /leads', () => {
-  let harness: TestHarness;
-
-  beforeEach(async () => {
-    harness = await makeTestHarness();
-  });
-
-  afterEach(async () => {
-    await harness.close();
-  });
-
-  /** Faz a consulta autenticada e decodifica com o Schema compartilhado. */
-  const list = async (query = ''): Promise<LeadPage> => {
-    const response = await harness.get(`/leads${query}`);
-    expect(response.statusCode).toBe(200);
-    return Schema.decodeUnknownSync(LeadPage)(response.json());
-  };
-
-  const namesIn = (page: LeadPage): readonly string[] =>
-    page.data.map((lead) => lead.name);
-
   describe('a carteira', () => {
     it('recusa quem não está logado', async () => {
       const response = await harness.app.inject({ method: 'GET', url: '/leads' });
@@ -281,6 +281,155 @@ describe('GET /leads', () => {
 
     it('recusa um identificador de vendedor que não é UUID', async () => {
       await expectRejection('?ownerId=ana', 'ownerId');
+    });
+  });
+});
+
+/*
+ * O contrato de `POST /leads`.
+ *
+ * O formulário do navegador e esta rota são validados pelo mesmo Schema, então
+ * o que estes testes provam não é "a API recusa" — é que **as duas pontas
+ * recusam a mesma coisa**, porque a regra é uma só. O que sobra de exclusivo da
+ * API é o que o navegador não tem como saber: se o responsável escolhido ainda
+ * existe, e o que um Lead recém-nascido vale de status e de última interação.
+ */
+describe('POST /leads', () => {
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    name: 'Juliana Prado',
+    company: 'Smart Fit Morumbi',
+    email: 'juliana.prado@smartfitmorumbi.com.br',
+    phone: '(11) 98812-4471',
+    jobTitle: 'Gerente de Operações',
+    source: 'REFERRAL',
+    ownerId: harness.seller.id,
+    notes: 'Quer trocar a linha de esteiras das duas unidades.',
+    ...overrides,
+  });
+
+  /** Cadastra e decodifica a resposta com o Schema que a tabela usa. */
+  const create = async (overrides: Record<string, unknown> = {}) => {
+    const response = await harness.post('/leads', payload(overrides));
+
+    expect(response.statusCode).toBe(201);
+    return Schema.decodeUnknownSync(LeadListItem)(response.json());
+  };
+
+  const rejection = async (overrides: Record<string, unknown>, status: number) => {
+    const response = await harness.post('/leads', payload(overrides));
+
+    expect(response.statusCode).toBe(status);
+    return response.json<{
+      error: string;
+      message: string;
+      issues?: { path: string }[];
+    }>();
+  };
+
+  describe('o cadastro', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'POST',
+        url: '/leads',
+        payload: payload(),
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('devolve o contato criado, já com o responsável resolvido', async () => {
+      const lead = await create();
+
+      expect(lead.name).toBe('Juliana Prado');
+      expect(lead.company).toBe('Smart Fit Morumbi');
+      // O responsável vem embutido: é o avatar que a linha da tabela desenha.
+      expect(lead.owner).toEqual({ id: harness.seller.id, name: harness.seller.name });
+    });
+
+    it('faz o contato aparecer na lista, sem passo intermediário', async () => {
+      await create();
+      const page = await list('?search=juliana&pageSize=100');
+
+      expect(namesIn(page)).toEqual(['Juliana Prado']);
+      expect((await list('?pageSize=100')).total).toBe(VISIBLE_LEAD_COUNT + 1);
+    });
+
+    it('nasce com status Novo e última interação no momento da criação', async () => {
+      const before = Date.now();
+      const lead = await create();
+      const after = Date.now();
+
+      expect(lead.status).toBe('NEW');
+      expect(lead.lastInteractionAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(lead.lastInteractionAt.getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('não deixa o corpo da requisição escolher o status', async () => {
+      // O campo não existe no Schema de entrada, então nem chega ao domínio:
+      // "nasce como Novo" é regra do CRM, não sugestão de quem cadastra.
+      const lead = await create({ status: 'WON' });
+
+      expect(lead.status).toBe('NEW');
+    });
+
+    it('normaliza o que foi digitado com espaço e caixa alta', async () => {
+      const lead = await create({
+        name: '  Juliana Prado  ',
+        email: ' Juliana.Prado@SmartFitMorumbi.com.br ',
+      });
+
+      expect(lead.name).toBe('Juliana Prado');
+      expect(lead.email).toBe('juliana.prado@smartfitmorumbi.com.br');
+    });
+
+    it('aceita cadastrar sem cargo e sem observações', async () => {
+      const lead = await create({ jobTitle: '', notes: '' });
+
+      expect(lead.name).toBe('Juliana Prado');
+    });
+
+    it('aceita o mesmo e-mail de um contato que já existe', async () => {
+      // O e-mail do Lead não é único de propósito: com remoção lógica, a linha
+      // apagada continuaria ocupando o índice e travaria o recadastro.
+      await create();
+      await create({ name: 'Juliana Prado (novo contato)' });
+
+      expect((await list('?search=juliana.prado&pageSize=100')).total).toBe(2);
+    });
+  });
+
+  describe('a recusa', () => {
+    it('aponta o campo obrigatório em branco, e não cadastra nada', async () => {
+      const body = await rejection({ name: '   ' }, 400);
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('name');
+      expect((await list('?pageSize=100')).total).toBe(VISIBLE_LEAD_COUNT);
+    });
+
+    it('aponta o e-mail malformado', async () => {
+      const body = await rejection({ email: 'juliana.prado' }, 400);
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('email');
+    });
+
+    it('recusa uma origem fora do vocabulário', async () => {
+      const body = await rejection({ source: 'INDICACAO' }, 400);
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('source');
+    });
+
+    it('devolve 404 quando o responsável escolhido não existe', async () => {
+      /*
+       * É a única regra deste cadastro que o navegador não tem como conferir
+       * sozinho: o `<select>` foi preenchido com uma lista de vendedores que
+       * pode ter mudado desde que a tela carregou.
+       */
+      const body = await rejection({ ownerId: randomUUID() }, 404);
+
+      expect(body.error).toBe('OwnerNotFound');
+      expect(body.message).not.toBe('');
+      expect((await list('?pageSize=100')).total).toBe(VISIBLE_LEAD_COUNT);
     });
   });
 });

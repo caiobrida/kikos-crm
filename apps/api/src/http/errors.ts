@@ -38,6 +38,9 @@ export const toHttpError = (error: DomainError): HttpError => {
     case 'Unauthorized':
       return { status: 401, body: { error: error._tag, message: error.message } };
 
+    case 'OwnerNotFound':
+      return { status: 404, body: { error: error._tag, message: error.message } };
+
     default: {
       const unmapped: never = error;
       throw new Error(

@@ -13,13 +13,13 @@ O mesmo Schema valida o formulário no navegador e a requisição na API. Não e
 
 **Branch:** `feat/create-lead`
 
-- [ ] Salvar um Lead válido o faz aparecer na lista imediatamente
-- [ ] Enviar sem campo obrigatório mostra o erro no campo, sem chamar a API
-- [ ] E-mail malformado é recusado com mensagem clara
-- [ ] A seleção de responsável é alimentada pelo endpoint de vendedores
-- [ ] Um responsável inexistente devolve 404 e a tela mostra o erro sem quebrar
-- [ ] Um Lead recém-criado nasce com status "Novo" e última interação no momento da criação
-- [ ] Cancelar volta para a lista sem salvar
+- [x] Salvar um Lead válido o faz aparecer na lista imediatamente
+- [x] Enviar sem campo obrigatório mostra o erro no campo, sem chamar a API
+- [x] E-mail malformado é recusado com mensagem clara
+- [x] A seleção de responsável é alimentada pelo endpoint de vendedores
+- [x] Um responsável inexistente devolve 404 e a tela mostra o erro sem quebrar
+- [x] Um Lead recém-criado nasce com status "Novo" e última interação no momento da criação
+- [x] Cancelar volta para a lista sem salvar
 
 ## Decisões que valem lembrar
 

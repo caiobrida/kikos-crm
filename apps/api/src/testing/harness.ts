@@ -152,6 +152,11 @@ export interface TestHarness {
    * A sessão é aberta uma vez na montagem, para não pagar um bcrypt por teste.
    */
   readonly get: (url: string) => Promise<LightMyRequestResponse>;
+  /** O mesmo para as escritas: o corpo vai como JSON, a sessão já vai junto. */
+  readonly post: (
+    url: string,
+    payload: Record<string, unknown>,
+  ) => Promise<LightMyRequestResponse>;
   readonly close: () => Promise<void>;
 }
 
@@ -200,12 +205,14 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
   });
   const accessToken = cookieValue(session.cookies, ACCESS_COOKIE) ?? '';
 
+  const cookies = { [ACCESS_COOKIE]: accessToken };
+
   return {
     app,
     manager,
     seller,
-    get: (url) =>
-      app.inject({ method: 'GET', url, cookies: { [ACCESS_COOKIE]: accessToken } }),
+    get: (url) => app.inject({ method: 'GET', url, cookies }),
+    post: (url, payload) => app.inject({ method: 'POST', url, cookies, payload }),
     close: async () => {
       await app.close();
       // Descarta as Layers, como o `main.ts` faz no shutdown.

@@ -109,6 +109,15 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
     );
 
     return {
+      create: (lead) =>
+        Effect.promise(async () => {
+          // O mesmo `select` da listagem: a linha volta pronta para a tabela,
+          // com o responsável trazido pelo `JOIN` da própria inserção.
+          const row = await prisma.lead.create({ data: lead, select: LIST_SELECT });
+
+          return toLeadWithOwner(row);
+        }),
+
       list: (query) =>
         Effect.promise(async () => {
           const where = whereFrom(query);

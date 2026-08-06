@@ -7,8 +7,10 @@ import { useSellers } from '../lib/sellers';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { Avatar } from '../ui/Avatar';
 import { LeadStatusBadge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { Input, Select } from '../ui/Field';
 import { Pagination } from '../ui/Pagination';
+import { CreateLeadModal } from './CreateLeadModal';
 import {
   Table,
   TableBody,
@@ -53,6 +55,12 @@ const countLabel = (total: number): string => {
 
 export const LeadsPage = () => {
   const [view, setView] = useState<LeadsView>(INITIAL_LEADS_VIEW);
+  /*
+   * O modal é montado só quando está aberto, e não escondido com `open={false}`:
+   * assim cada cadastro começa com o formulário em branco, sem depender de
+   * alguém lembrar de limpá-lo ao fechar.
+   */
+  const [isCreating, setIsCreating] = useState(false);
   const sellers = useSellers();
 
   /*
@@ -79,13 +87,19 @@ export const LeadsPage = () => {
 
   return (
     <div className="mx-auto max-w-7xl px-8 py-10">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-ink">Leads</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          {page === undefined ? 'Carregando a carteira…' : countLabel(page.total)}
-          {page !== undefined && page.total > 0 ? ' no recorte atual.' : ''}
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">Leads</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            {page === undefined ? 'Carregando a carteira…' : countLabel(page.total)}
+            {page !== undefined && page.total > 0 ? ' no recorte atual.' : ''}
+          </p>
+        </div>
+
+        <Button onClick={() => setIsCreating(true)}>Criar Novo Lead</Button>
       </header>
+
+      {isCreating ? <CreateLeadModal onClose={() => setIsCreating(false)} /> : null}
 
       {/*
         Os controles são dimensionados pelo contêiner, e não por uma classe de
