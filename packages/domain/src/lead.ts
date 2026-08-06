@@ -13,23 +13,6 @@ import { OptionalText, RequiredText } from './text';
 import { Email, UserSummary } from './user';
 
 /**
- * Um Lead como uma linha da lista o mostra.
- *
- * São exatamente as sete colunas da tabela, e nada além delas. `jobTitle` e
- * `notes` ficam de fora pelo mesmo motivo que o `owner` vem enxuto: são texto
- * livre que nenhuma linha desenha, e repeti-los em cada uma das dez linhas de
- * cada página seria tráfego que ninguém lê. Eles chegam com o detalhamento do
- * Lead, na fatia que abre o modal.
- *
- * O responsável vem embutido e já resolvido: a tabela desenha o avatar dele em
- * toda linha, e mandar só o `ownerId` obrigaria a tela a buscar os vendedores
- * antes de conseguir renderizar qualquer coisa.
- *
- * `deletedAt` não está aqui de propósito. A remoção lógica é assunto do
- * repositório — nenhuma tela precisa saber que a coluna existe, e um campo que
- * não existe no Schema não tem como vazar num `GET` distraído.
- */
-/**
  * O Lead como ele aparece **dentro** de um Deal — no card do board e, adiante,
  * na tabela do dashboard.
  *
@@ -46,6 +29,23 @@ export const LeadSummary = Schema.Struct({
 
 export type LeadSummary = typeof LeadSummary.Type;
 
+/**
+ * Um Lead como uma linha da lista o mostra.
+ *
+ * São exatamente as sete colunas da tabela, e nada além delas. `jobTitle` e
+ * `notes` ficam de fora pelo mesmo motivo que o `owner` vem enxuto: são texto
+ * livre que nenhuma linha desenha, e repeti-los em cada uma das dez linhas de
+ * cada página seria tráfego que ninguém lê. Eles chegam com o detalhamento do
+ * Lead, na fatia que abre o modal.
+ *
+ * O responsável vem embutido e já resolvido: a tabela desenha o avatar dele em
+ * toda linha, e mandar só o `ownerId` obrigaria a tela a buscar os vendedores
+ * antes de conseguir renderizar qualquer coisa.
+ *
+ * `deletedAt` não está aqui de propósito. A remoção lógica é assunto do
+ * repositório — nenhuma tela precisa saber que a coluna existe, e um campo que
+ * não existe no Schema não tem como vazar num `GET` distraído.
+ */
 export const LeadListItem = Schema.Struct({
   id: LeadId,
   name: Schema.String,

@@ -1,4 +1,4 @@
-import type { DealBoardColumn } from '@kikos/domain';
+import { BOARD_COLUMN_PAGE_SIZE, type DealBoardColumn } from '@kikos/domain';
 import { useState } from 'react';
 import { useColumnPages, type BoardView } from '../lib/deals';
 import { DEAL_STAGE_LABELS } from '../lib/labels';
@@ -52,20 +52,32 @@ export const BoardColumn = ({ column, view }: BoardColumnProps) => {
           deals.map((deal) => <DealCard key={deal.id} deal={deal} />)
         )}
 
+        {/*
+          Depois de um erro o botão vira "tentar de novo", e não "carregar
+          mais": pedir a página seguinte deixaria um buraco no meio da coluna,
+          justamente o que o desempate por identificador existe para evitar do
+          outro lado.
+        */}
         {more.isError ? (
-          <p role="alert" className="text-xs text-lost-400">
-            Não foi possível carregar mais negócios.
-          </p>
-        ) : null}
+          <>
+            <p role="alert" className="text-xs text-lost-400">
+              Não foi possível carregar mais negócios.
+            </p>
 
-        {remaining > 0 ? (
+            <Button variant="secondary" size="sm" onClick={more.retry}>
+              Tentar de novo
+            </Button>
+          </>
+        ) : remaining > 0 ? (
           <Button
             variant="secondary"
             size="sm"
             isLoading={more.isLoading}
             onClick={() => setLoadedPages((loaded) => loaded + 1)}
           >
-            Carregar mais {remaining}
+            {/* O número é o que este clique traz, não o que falta: o cabeçalho
+                já responde "quantos existem". */}
+            Carregar mais {Math.min(remaining, BOARD_COLUMN_PAGE_SIZE)}
           </Button>
         ) : null}
       </div>

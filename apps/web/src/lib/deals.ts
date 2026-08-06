@@ -27,6 +27,16 @@ export interface BoardView {
 export const INITIAL_BOARD_VIEW: BoardView = { search: '', ownerId: '' };
 
 /**
+ * O recorte como uma chave de remontagem.
+ *
+ * Mora aqui, junto do `BoardView`, para que um filtro novo no board não exija
+ * lembrar de acrescentá-lo à `key` da coluna lá na tela — é o tipo de
+ * esquecimento que só aparece como uma coluna teimando em mostrar as páginas
+ * de um recorte que não existe mais.
+ */
+export const boardViewKey = (view: BoardView): string => `${view.search}:${view.ownerId}`;
+
+/**
  * O board inteiro, numa requisição.
  *
  * Nada é filtrado no navegador: o `view` vira query string e as cinco colunas
@@ -52,6 +62,8 @@ export interface ColumnPages {
   readonly deals: readonly DealListItem[];
   readonly isLoading: boolean;
   readonly isError: boolean;
+  /** Refaz as páginas que falharam, e só elas. */
+  readonly retry: () => void;
 }
 
 /**
@@ -96,5 +108,16 @@ export const useColumnPages = (
       deals: results.flatMap((result) => result.data?.data ?? []),
       isLoading: results.some((result) => result.isPending),
       isError: results.some((result) => result.isError),
+      /*
+       * Uma página que falhou é refeita, e não pulada: quem pede mais depois de
+       * um erro está pedindo a mesma página de novo. Avançar o contador
+       * deixaria um buraco de cinco cards no meio da coluna — exatamente o
+       * "sem repetir nem pular card" que o servidor trabalha para garantir.
+       */
+      retry: () => {
+        for (const result of results) {
+          if (result.isError) void result.refetch();
+        }
+      },
     }),
   });

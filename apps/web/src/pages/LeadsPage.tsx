@@ -9,6 +9,7 @@ import { Avatar } from '../ui/Avatar';
 import { LeadStatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Input, Select } from '../ui/Field';
+import { OwnerFilter } from '../ui/OwnerFilter';
 import { Pagination } from '../ui/Pagination';
 import { CreateLeadModal } from './CreateLeadModal';
 import {
@@ -141,21 +142,12 @@ export const LeadsPage = () => {
         </div>
 
         <div className="w-56">
-          <label htmlFor="leads-owner" className="sr-only">
-            Filtrar por responsável
-          </label>
-          <Select
+          <OwnerFilter
             id="leads-owner"
+            sellers={sellers.data ?? []}
             value={view.ownerId}
-            onChange={(event) => refine({ ownerId: event.target.value })}
-          >
-            <option value="">Todos os responsáveis</option>
-            {(sellers.data ?? []).map((seller) => (
-              <option key={seller.id} value={seller.id}>
-                {seller.name}
-              </option>
-            ))}
-          </Select>
+            onChange={(ownerId) => refine({ ownerId })}
+          />
         </div>
       </div>
 

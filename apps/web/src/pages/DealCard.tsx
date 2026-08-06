@@ -14,7 +14,7 @@ import { Avatar } from '../ui/Avatar';
  * fatia que os desenha.
  */
 export const DealCard = ({ deal }: { readonly deal: DealListItem }) => {
-  const client = `${deal.lead.name} · ${deal.lead.company}`;
+  const lead = `${deal.lead.name} · ${deal.lead.company}`;
 
   return (
     <article className="rounded-card bg-surface-800 p-3 ring-1 ring-surface-700">
@@ -29,8 +29,8 @@ export const DealCard = ({ deal }: { readonly deal: DealListItem }) => {
       <div className="mt-3 flex items-center gap-2">
         {/* O nome inteiro fica no `title`: numa coluna estreita o corte é
             regra, não exceção. */}
-        <span className="min-w-0 flex-1 truncate text-xs text-ink-muted" title={client}>
-          {client}
+        <span className="min-w-0 flex-1 truncate text-xs text-ink-muted" title={lead}>
+          {lead}
         </span>
 
         <Avatar name={deal.owner.name} size="sm" />

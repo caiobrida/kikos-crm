@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { INITIAL_BOARD_VIEW, useBoard, type BoardView } from '../lib/deals';
+import { INITIAL_BOARD_VIEW, boardViewKey, useBoard, type BoardView } from '../lib/deals';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useSellers } from '../lib/sellers';
-import { Input, Select } from '../ui/Field';
+import { Input } from '../ui/Field';
+import { OwnerFilter } from '../ui/OwnerFilter';
 import { BoardColumn } from './BoardColumn';
 
 /*
@@ -68,23 +69,12 @@ export const DealsBoardPage = () => {
         </div>
 
         <div className="w-56">
-          <label htmlFor="deals-owner" className="sr-only">
-            Filtrar por responsável
-          </label>
-          <Select
+          <OwnerFilter
             id="deals-owner"
+            sellers={sellers.data ?? []}
             value={view.ownerId}
-            onChange={(event) =>
-              setView((current) => ({ ...current, ownerId: event.target.value }))
-            }
-          >
-            <option value="">Todos os responsáveis</option>
-            {(sellers.data ?? []).map((seller) => (
-              <option key={seller.id} value={seller.id}>
-                {seller.name}
-              </option>
-            ))}
-          </Select>
+            onChange={(ownerId) => setView((current) => ({ ...current, ownerId }))}
+          />
         </div>
       </div>
 
@@ -109,7 +99,7 @@ export const DealsBoardPage = () => {
              * seguintes de um recorte que não existe mais.
              */
             <BoardColumn
-              key={`${column.stage}:${query.search}:${query.ownerId}`}
+              key={`${column.stage}:${boardViewKey(query)}`}
               column={column}
               view={query}
             />
