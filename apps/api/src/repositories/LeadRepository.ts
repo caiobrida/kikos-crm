@@ -1,6 +1,6 @@
 import {
   LEAD_STATUSES,
-  type LeadId,
+  LeadId,
   type LeadListQuery,
   type LeadSortBy,
   type LeadSource,
@@ -9,7 +9,8 @@ import {
   type UserId,
   type UserSummary,
 } from '@kikos/domain';
-import { Context, Effect, Layer, Ref } from 'effect';
+import { Context, Effect, Layer, Ref, Schema } from 'effect';
+import { randomUUID } from 'node:crypto';
 import type { UserRecord } from './UserRepository';
 
 /**
@@ -50,6 +51,16 @@ export type LeadWithOwner = Omit<
   readonly owner: UserSummary;
 };
 
+/**
+ * Um Lead a caminho do banco: a linha inteira menos o identificador, que o
+ * banco gera, e menos `deletedAt`, que só a remoção lógica escreve.
+ *
+ * `status` e `lastInteractionAt` **estão** aqui, e não são default de coluna: o
+ * caso de uso os decide (Novo, agora) e esta camada apenas grava. É o que
+ * mantém a regra acima da seam, onde os testes a alcançam sem banco.
+ */
+export type NewLead = Omit<LeadRecord, 'id' | 'deletedAt'>;
+
 /** Uma fatia de resultados: a página pedida e o tamanho do recorte inteiro. */
 export interface Slice<A> {
   readonly data: readonly A[];
@@ -74,6 +85,13 @@ export class LeadRepository extends Context.Tag('LeadRepository')<
   {
     /** Busca, filtro, ordenação e paginação, resolvidos de uma vez só. */
     readonly list: (query: LeadListQuery) => Effect.Effect<Slice<LeadWithOwner>>;
+    /**
+     * Grava o contato e devolve a linha como a lista a mostra — com o
+     * responsável já resolvido, que é o que a rota responde no 201. Devolver o
+     * mesmo formato da listagem, e não o registro cru, mantém um Schema só
+     * descrevendo "um Lead como o CRM o mostra".
+     */
+    readonly create: (lead: NewLead) => Effect.Effect<LeadWithOwner>;
   }
 >() {}
 
@@ -194,6 +212,23 @@ export const LeadRepositoryInMemory = (
       };
 
       return {
+        create: (lead) =>
+          Effect.gen(function* () {
+            /*
+             * O identificador nasce aqui porque no Postgres ele nasce no banco
+             * (`@default(uuid())`): as duas Layers precisam responder a mesma
+             * coisa a quem chamou, e quem chamou não escolhe identificador.
+             */
+            const record: LeadRecord = {
+              ...lead,
+              id: Schema.decodeSync(LeadId)(randomUUID()),
+              deletedAt: null,
+            };
+
+            yield* Ref.update(store, (leads) => [...leads, record]);
+            return withOwner(record);
+          }),
+
         list: (query) =>
           Ref.get(store).pipe(
             Effect.map((leads) => {

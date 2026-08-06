@@ -13,4 +13,5 @@ export * from './health';
 export * from './ids';
 export * from './lead';
 export * from './pagination';
+export * from './text';
 export * from './user';

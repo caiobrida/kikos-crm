@@ -46,7 +46,9 @@ O seed cria um gestor, três vendedores e catorze Leads. A senha de todos é **`
 | `maria.silva@kikos.com.br`   | Maria da Silva     | `SELLER`  |
 
 Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
-primeira tela de dados pronta; Dashboard, Negócios e Vendedores vêm nas fatias seguintes. A
+primeira tela de dados pronta — a carteira com busca, filtros, ordenação e paginação, e o botão
+"Criar Novo Lead" que cadastra um contato; Dashboard, Negócios e Vendedores vêm nas fatias
+seguintes. A
 **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
 variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
 `/api/health`, e se estiver verde o proxy e a API estão de pé.
@@ -68,6 +70,26 @@ Duas consequências que valem registrar:
   aparece duas vezes.
 
 No app web, a busca é atrasada em 300ms: digitar "ritmo" dispara uma requisição, não cinco.
+
+## Um Schema, duas pontas
+
+O formulário "Criar Novo Lead" e o corpo de `POST /leads` são validados pelo **mesmo objeto**:
+`CreateLeadInput`, em `packages/domain/src/lead.ts`. No navegador ele entra no react-hook-form
+por `@hookform/resolvers/effect-ts`; na API, pelo `decodeBody` da rota. Campo obrigatório em
+branco e e-mail malformado são apontados junto do campo antes de qualquer ida ao servidor — e
+recusados de novo, pela mesma regra, se alguém enviar a requisição por fora da tela.
+
+`Schema` faz aqui o papel que um Zod faria, com uma diferença que este cadastro usa o tempo
+todo: ele descreve a **transformação** entre a forma que trafega e a forma do domínio, não só a
+validação. O lado codificado é o que o `<form>` produz — tudo string, `""` no que ninguém
+escolheu. O lado decodificado é o que o domínio quer — texto aparado, e-mail normalizado,
+`undefined` no opcional em branco, `ownerId` com marca de `UserId`. Na hora de enviar, o mesmo
+Schema faz o caminho de volta com `Schema.encodeSync`, em vez de a tela montar o corpo à mão.
+
+Sobram para o servidor as duas coisas que o navegador não tem como saber: se o vendedor
+responsável escolhido ainda existe — senão `OwnerNotFound`, 404 — e com que status e com que
+data o contato nasce. "Novo, agora" é regra do CRM, e é por isso que nenhum dos dois campos
+existe no Schema de entrada: não há como o corpo da requisição escolhê-los.
 
 ## Estrutura
 
@@ -166,6 +188,15 @@ curl -s -c /tmp/kikos.txt -X POST localhost:3333/auth/login \
 
 curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=_'      # total 0, não 14
 curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=ritmo'  # total 2
+
+# A inserção também só existe na Layer de Prisma. O responsável precisa ser um
+# vendedor de verdade — daí a primeira chamada.
+curl -s -b /tmp/kikos.txt 'localhost:3333/users?role=SELLER'   # copie um "id"
+curl -s -b /tmp/kikos.txt -X POST localhost:3333/leads \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Teste Prisma","company":"Academia Teste","email":"teste@academiateste.com.br",
+       "phone":"(11) 90000-0000","source":"WEBSITE","ownerId":"COLE_O_ID_AQUI"}'
+# 201, status "NEW", e o contato passa a aparecer em ?search=teste
 ```
 
 ## Effect

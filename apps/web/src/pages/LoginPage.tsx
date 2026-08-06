@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation } from 'react-router';
-import { ApiError } from '../lib/api';
+import { errorProp, fieldError, generalError } from '../lib/formErrors';
 import { useLogin, useSession } from '../lib/session';
 import { Button } from '../ui/Button';
 import { Field, Input } from '../ui/Field';
@@ -11,11 +11,8 @@ interface LoginLocationState {
   readonly from?: string;
 }
 
-/** O erro de um campo específico, quando a API respondeu `ValidationFailed`. */
-const issueFor = (error: unknown, path: string): string | undefined =>
-  error instanceof ApiError
-    ? error.issues.find((issue) => issue.path === path)?.message
-    : undefined;
+/** Os campos que a recusa da API pode apontar neste formulário. */
+const FIELDS = ['email', 'password'];
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -36,15 +33,9 @@ export const LoginPage = () => {
     login.mutate({ email, password });
   };
 
-  /*
-   * A mensagem geral só aparece quando o erro não é de campo — senão a mesma
-   * queixa apareceria duas vezes na tela.
-   */
-  const fieldIssues = [issueFor(login.error, 'email'), issueFor(login.error, 'password')];
-  const generalError =
-    login.error !== null && fieldIssues.every((issue) => issue === undefined)
-      ? login.error.message
-      : undefined;
+  const emailError = fieldError(login.error, 'email');
+  const passwordError = fieldError(login.error, 'password');
+  const formError = generalError(login.error, FIELDS);
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
@@ -63,12 +54,7 @@ export const LoginPage = () => {
           noValidate
           className="flex flex-col gap-5 rounded-card bg-surface-900 p-6 ring-1 ring-surface-700"
         >
-          <Field
-            htmlFor="login-email"
-            label="E-mail"
-            required
-            {...(fieldIssues[0] === undefined ? {} : { error: fieldIssues[0] })}
-          >
+          <Field htmlFor="login-email" label="E-mail" required {...errorProp(emailError)}>
             <Input
               id="login-email"
               type="email"
@@ -86,7 +72,7 @@ export const LoginPage = () => {
             htmlFor="login-password"
             label="Senha"
             required
-            {...(fieldIssues[1] === undefined ? {} : { error: fieldIssues[1] })}
+            {...errorProp(passwordError)}
           >
             <Input
               id="login-password"
@@ -100,7 +86,7 @@ export const LoginPage = () => {
             />
           </Field>
 
-          {generalError !== undefined ? (
+          {formError !== undefined ? (
             /*
              * `role="alert"` faz o leitor de tela anunciar a recusa. Sem isso,
              * quem não enxerga a tela só descobre que nada aconteceu.
@@ -109,7 +95,7 @@ export const LoginPage = () => {
               role="alert"
               className="rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
             >
-              {generalError}
+              {formError}
             </p>
           ) : null}
 
