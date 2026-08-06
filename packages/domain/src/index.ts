@@ -7,11 +7,13 @@
  * existem para que a regra falhe no CI em vez de falhar no build do Vite.
  */
 export * from './auth';
+export * from './deal';
 export * from './enums';
 export * from './errors';
 export * from './health';
 export * from './ids';
 export * from './lead';
+export * from './money';
 export * from './pagination';
 export * from './text';
 export * from './user';

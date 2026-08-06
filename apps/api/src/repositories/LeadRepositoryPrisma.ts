@@ -3,6 +3,7 @@ import { Effect, Layer } from 'effect';
 import type { Prisma } from '../generated/prisma/client';
 import { createPrismaClient } from '../prisma';
 import { LeadRepository, type LeadWithOwner } from './LeadRepository';
+import { escapeLikeWildcards } from './like';
 
 /*
  * A implementação sobre Prisma.
@@ -34,21 +35,6 @@ const toLeadWithOwner = (row: LeadRow): LeadWithOwner => ({
   id: row.id as LeadId,
   owner: { id: row.owner.id as UserId, name: row.owner.name },
 });
-
-/**
- * Neutraliza os curingas do `LIKE` dentro do que o usuário digitou.
- *
- * O `contains` do Prisma vira `ILIKE '%termo%'`, e o termo entra no padrão sem
- * tratamento: uma busca por `_` sozinho casaria com **todas** as linhas, porque
- * `_` significa "um caractere qualquer". A barra invertida é o escape padrão do
- * `LIKE` no Postgres, e por isso precisa ser a primeira a ser escapada.
- *
- * Não é questão de segurança — o termo viaja como parâmetro, não concatenado —,
- * é de significado: aqui a busca casa com o que está escrito, como a Layer em
- * memória já fazia com `includes`.
- */
-const escapeLikeWildcards = (term: string): string =>
-  term.replace(/[\\%_]/g, (wildcard) => `\\${wildcard}`);
 
 /**
  * O `WHERE` da listagem.

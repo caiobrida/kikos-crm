@@ -13,13 +13,13 @@ Ainda não se move nem se clica em card — isso vem depois.
 
 **Branch:** `feat/deals-board`
 
-- [ ] O board mostra os negócios do seed distribuídos pelas cinco colunas
-- [ ] O contador de cada coluna vem do total do servidor, não do tamanho do array recebido
-- [ ] A busca filtra as cinco colunas de uma vez
-- [ ] O filtro por vendedor vale para o board inteiro
-- [ ] Uma coluna com mais itens que a primeira página carrega os seguintes sob demanda
-- [ ] Valores aparecem formatados em reais e são armazenados em centavos
-- [ ] O board abre numa única ida ao servidor
+- [x] O board mostra os negócios do seed distribuídos pelas cinco colunas
+- [x] O contador de cada coluna vem do total do servidor, não do tamanho do array recebido
+- [x] A busca filtra as cinco colunas de uma vez
+- [x] O filtro por vendedor vale para o board inteiro
+- [x] Uma coluna com mais itens que a primeira página carrega os seguintes sob demanda
+- [x] Valores aparecem formatados em reais e são armazenados em centavos
+- [x] O board abre numa única ida ao servidor
 
 ## Decisões que valem lembrar
 

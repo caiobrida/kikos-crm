@@ -29,6 +29,23 @@ import { Email, UserSummary } from './user';
  * repositório — nenhuma tela precisa saber que a coluna existe, e um campo que
  * não existe no Schema não tem como vazar num `GET` distraído.
  */
+/**
+ * O Lead como ele aparece **dentro** de um Deal — no card do board e, adiante,
+ * na tabela do dashboard.
+ *
+ * Nome e empresa juntos porque um card sem os dois não identifica a
+ * oportunidade: "Juliana Prado" existe em muitas academias, e "Smart Fit
+ * Morumbi" tem mais de um contato. Telefone, e-mail e o resto do dossiê chegam
+ * com o detalhamento do Deal, não em cada card do funil.
+ */
+export const LeadSummary = Schema.Struct({
+  id: LeadId,
+  name: Schema.String,
+  company: Schema.String,
+});
+
+export type LeadSummary = typeof LeadSummary.Type;
+
 export const LeadListItem = Schema.Struct({
   id: LeadId,
   name: Schema.String,

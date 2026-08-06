@@ -4,6 +4,7 @@ import { Schema } from 'effect';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { config } from './config';
 import { registerAuthRoutes } from './routes/auth';
+import { registerDealRoutes } from './routes/deals';
 import { registerLeadRoutes } from './routes/leads';
 import { registerUserRoutes } from './routes/users';
 import type { AppRuntime } from './runtime';
@@ -58,6 +59,7 @@ export const buildServer = (options: BuildServerOptions): FastifyInstance => {
   registerAuthRoutes(app, options.runtime);
   registerUserRoutes(app, options.runtime);
   registerLeadRoutes(app, options.runtime);
+  registerDealRoutes(app, options.runtime);
 
   return app;
 };

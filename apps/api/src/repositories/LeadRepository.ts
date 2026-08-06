@@ -11,6 +11,7 @@ import {
 } from '@kikos/domain';
 import { Context, Effect, Layer, Ref, Schema } from 'effect';
 import { randomUUID } from 'node:crypto';
+import type { Slice } from './Slice';
 import type { UserRecord } from './UserRepository';
 
 /**
@@ -60,13 +61,6 @@ export type LeadWithOwner = Omit<
  * mantém a regra acima da seam, onde os testes a alcançam sem banco.
  */
 export type NewLead = Omit<LeadRecord, 'id' | 'deletedAt'>;
-
-/** Uma fatia de resultados: a página pedida e o tamanho do recorte inteiro. */
-export interface Slice<A> {
-  readonly data: readonly A[];
-  /** O total do recorte depois dos filtros, antes do corte da página. */
-  readonly total: number;
-}
 
 /**
  * O repositório de Lead.
