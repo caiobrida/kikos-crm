@@ -36,7 +36,8 @@ O prefixo `/api` é convenção do proxy: a API serve o contrato sem prefixo (`/
 
 ### Credenciais de exemplo
 
-O seed cria um gestor, três vendedores e catorze Leads. A senha de todos é **`kikos123`**:
+O seed cria um gestor, três vendedores, catorze Leads e vinte e um Negócios. A senha de todos é
+**`kikos123`**:
 
 | E-mail                       | Nome               | Papel     |
 | ---------------------------- | ------------------ | --------- |
@@ -46,9 +47,9 @@ O seed cria um gestor, três vendedores e catorze Leads. A senha de todos é **`
 | `maria.silva@kikos.com.br`   | Maria da Silva     | `SELLER`  |
 
 Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
-primeira tela de dados pronta — a carteira com busca, filtros, ordenação e paginação, e o botão
-"Criar Novo Lead" que cadastra um contato; Dashboard, Negócios e Vendedores vêm nas fatias
-seguintes. A
+carteira, com busca, filtros, ordenação e paginação, e o botão "Criar Novo Lead" que cadastra um
+contato. **Negócios** é o funil como board, com uma coluna por Stage; ainda é só leitura —
+arrastar, abrir e encerrar chegam nas fatias seguintes, como Dashboard e Vendedores. A
 **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
 variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
 `/api/health`, e se estiver verde o proxy e a API estão de pé.
@@ -70,6 +71,31 @@ Duas consequências que valem registrar:
   aparece duas vezes.
 
 No app web, a busca é atrasada em 300ms: digitar "ritmo" dispara uma requisição, não cinco.
+
+### O board é o caso especial
+
+Um kanban não tem "página 2": as cinco colunas são cinco recortes que o vendedor olha ao mesmo
+tempo. Por isso `GET /deals/board` existe separado da listagem e devolve as cinco de uma vez,
+cada uma com a sua primeira leva de cards **e com o total real da coluna** — que é o número do
+cabeçalho. Contar os cards recebidos daria 5 numa coluna de 7, e a coluna mais cheia do funil
+seria justamente a que anunciaria o número menor.
+
+O board, porém, não tem consulta própria: ele é `GET /deals` rodado cinco vezes com o Stage
+fixado (`boardColumnQuery`, em `apps/api/src/repositories/DealRepository.ts`). É daí que sai a
+garantia de que o "carregar mais" de uma coluna continua de onde ela parou — mesma ordem, mesmo
+tamanho de página, e o `id` como desempate. O tamanho da leva vive no pacote compartilhado
+(`BOARD_COLUMN_PAGE_SIZE`), porque as duas pontas precisam concordar sobre ele.
+
+Essa mesma listagem paginada é a que a tabela de negócios do dashboard vai consumir. Ela nasceu
+aqui completa — busca, filtro por Stage e por vendedor, ordenação e paginação — em vez de virar
+um endpoint paralelo depois.
+
+### Dinheiro é inteiro em centavos
+
+Valores monetários são `Int` em centavos no banco, no JSON e no domínio. O `Decimal` do Prisma
+atravessaria o JSON como string e complicaria o Schema; ponto flutuante acumularia erro ao somar
+o funil no dashboard. A divisão por cem acontece num lugar só, na borda que desenha —
+`formatBRL`, em `apps/web/src/lib/money.ts`.
 
 ## Um Schema, duas pontas
 
@@ -197,6 +223,18 @@ curl -s -b /tmp/kikos.txt -X POST localhost:3333/leads \
   -d '{"name":"Teste Prisma","company":"Academia Teste","email":"teste@academiateste.com.br",
        "phone":"(11) 90000-0000","source":"WEBSITE","ownerId":"COLE_O_ID_AQUI"}'
 # 201, status "NEW", e o contato passa a aparecer em ?search=teste
+
+# O board: cinco colunas, e a de Proposta enviada com sete negócios mostrando
+# cinco cards — é o total do servidor, não o tamanho do array.
+curl -s -b /tmp/kikos.txt 'localhost:3333/deals/board' \
+  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const c of JSON.parse(s).columns)console.log(c.stage,c.total,c.deals.length)})"
+
+# O "carregar mais": a página 2 continua a coluna, sem repetir card.
+curl -s -b /tmp/kikos.txt 'localhost:3333/deals?stage=PROPOSAL_SENT&pageSize=5&page=2'
+
+# A busca do board atravessa o JOIN: "bodytech" é a empresa do Lead, não o
+# título do negócio.
+curl -s -b /tmp/kikos.txt 'localhost:3333/deals?search=bodytech'
 ```
 
 ## Effect

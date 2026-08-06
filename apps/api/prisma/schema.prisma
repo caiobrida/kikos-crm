@@ -1,8 +1,8 @@
 // O modelo de dados do Kikos CRM.
 //
 // `User` é a identidade única do sistema, tanto de quem faz login quanto de
-// quem recebe Leads e Deals (ADR-0001). `Lead` é o contato comercial. Deal e
-// Comment entram nas fatias seguintes.
+// quem recebe Leads e Deals (ADR-0001). `Lead` é o contato comercial, e `Deal`
+// é a oportunidade de venda sobre ele. Comment entra na fatia da linha do tempo.
 
 generator client {
   provider = "prisma-client"
@@ -38,6 +38,27 @@ enum LeadStatus {
   LOST
 }
 
+/// Onde o Deal está no Pipeline — a coluna do kanban.
+///
+/// A ordem de declaração é a ordem do funil, e é ela que um `ORDER BY` sobre a
+/// coluna usa no Postgres. `CLOSED` é o último, e não é destino de movimentação:
+/// chega-se nele marcando Ganho ou Perdido (ADR-0003).
+enum DealStage {
+  NEW
+  CONTACT_MADE
+  PROPOSAL_SENT
+  NEGOTIATION
+  CLOSED
+}
+
+/// O desfecho do Deal. Ortogonal ao estágio: um diz onde o negócio está, o
+/// outro diz se ele terminou e como (ADR-0003).
+enum DealResult {
+  OPEN
+  WON
+  LOST
+}
+
 /// Por qual canal o Lead chegou ao time.
 enum LeadSource {
   WEBSITE
@@ -62,6 +83,7 @@ model User {
   tokenVersion Int @default(0)
 
   leads Lead[]
+  deals Deal[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -96,6 +118,11 @@ model Lead {
   /// O campo livre do Lead. Comentário é coisa de Deal (ver CONTEXT.md).
   notes String?
 
+  /// Um Lead pode ter vários Deals — é por isso que o negócio não é campo do
+  /// contato. Sem `onDelete`: a remoção de Lead é lógica, e o Deal continua
+  /// apontando para a linha.
+  deals Deal[]
+
   /// O momento do último acontecimento relevante. Escrito pelas ações do
   /// domínio, não derivado do comentário mais recente.
   lastInteractionAt DateTime @default(now())
@@ -114,4 +141,62 @@ model Lead {
   @@index([deletedAt, status])
   @@index([deletedAt, lastInteractionAt])
   @@map("leads")
+}
+
+/// Uma oportunidade de venda concreta sobre um Lead, com um valor. Um Lead pode
+/// ter vários Deals.
+model Deal {
+  id    String @id @default(uuid()) @db.Uuid
+  title String
+
+  /// **Inteiro em centavos, não `Decimal` nem ponto flutuante.** O `Decimal` do
+  /// Prisma atravessa o JSON como string e complicaria o Schema; ponto
+  /// flutuante perde centavo ao somar o funil no dashboard. O Schema
+  /// compartilhado limita o valor a R$ 10.000.000,00, bem dentro do teto de um
+  /// inteiro de 32 bits.
+  valueInCents Int
+
+  /// O contato de quem é o negócio.
+  leadId String @db.Uuid
+  lead   Lead   @relation(fields: [leadId], references: [id])
+
+  /// O vendedor responsável, que pode ser diferente do dono do Lead — quem
+  /// prospecta nem sempre é quem fecha.
+  ownerId String @db.Uuid
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  /// Onde o negócio está, e se ele terminou e como. As duas dimensões são
+  /// ortogonais (ADR-0003), e o estado "estágio Fechado com resultado em
+  /// aberto" é inalcançável por construção: encerrar preenche as duas de uma
+  /// vez.
+  stage  DealStage  @default(NEW)
+  result DealResult @default(OPEN)
+
+  /// O escopo negociado. Opcional no cadastro.
+  description String?
+
+  /// A data prevista de fechamento, informada por quem cadastra, e a data em
+  /// que o negócio foi de fato encerrado, escrita pelo domínio junto do
+  /// resultado.
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+
+  /// O momento do último acontecimento relevante: criação, comentário, mudança
+  /// de estágio ou fechamento. Escrito pelas ações do domínio.
+  lastInteractionAt DateTime @default(now())
+
+  /// Remoção lógica, como no Lead. O filtro que a respeita mora na camada de
+  /// repositório, nunca nas rotas.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Os recortes que o board e o dashboard pedem. `deletedAt` entra em todos
+  /// porque toda consulta começa excluindo os removidos, e `stage` vem logo
+  /// depois porque o board consulta coluna por coluna.
+  @@index([deletedAt, stage, lastInteractionAt])
+  @@index([deletedAt, ownerId])
+  @@index([deletedAt, leadId])
+  @@map("deals")
 }

@@ -19,3 +19,7 @@ export type UserId = typeof UserId.Type;
 /** O identificador de um Lead. */
 export const LeadId = Schema.UUID.pipe(Schema.brand('LeadId'));
 export type LeadId = typeof LeadId.Type;
+
+/** O identificador de um Deal. */
+export const DealId = Schema.UUID.pipe(Schema.brand('DealId'));
+export type DealId = typeof DealId.Type;

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from './layout/AppShell';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { DealsBoardPage } from './pages/DealsBoardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
 import { PrimitivesPage } from './pages/PrimitivesPage';
@@ -34,15 +35,7 @@ export const App = () => (
 
         <Route path="/leads" element={<LeadsPage />} />
 
-        <Route
-          path="/negocios"
-          element={
-            <ComingSoonPage
-              title="Negócios"
-              description="O funil como board, uma coluna por Stage, com arrastar para registrar o avanço da negociação."
-            />
-          }
-        />
+        <Route path="/negocios" element={<DealsBoardPage />} />
 
         <Route
           path="/vendedores"
