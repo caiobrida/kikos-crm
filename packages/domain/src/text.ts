@@ -37,8 +37,12 @@ export const RequiredText = (missing: string, maxLength: number) =>
  * Um campo opcional: aparado, com o mesmo teto de tamanho, e `undefined` quando
  * ficou em branco.
  *
- * O `encode` faz o caminho de volta — `undefined` vira `""` — porque é assim
- * que o valor volta para um `<input>` na tela de edição.
+ * `Schema.transform(de, para, { decode, encode })` é o combinador que descreve
+ * uma conversão nos dois sentidos. Em TypeScript comum seriam duas funções
+ * soltas — `paraDominio(texto)` e `paraFormulario(valor)` — que ninguém obriga
+ * a serem inversas uma da outra. Aqui elas nascem coladas ao tipo: o `decode`
+ * lê `""` como ausência, e o `encode` faz o caminho de volta, que é como o
+ * valor volta para um `<input>` na tela de edição.
  */
 export const OptionalText = (maxLength: number) =>
   Schema.transform(

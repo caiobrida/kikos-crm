@@ -68,9 +68,12 @@ const createLead = (
     }
 
     /*
-     * A hora vem do `Clock` do Effect, e não de `new Date()`: é um serviço do
-     * runtime, o que torna `lastInteractionAt` determinístico sob `TestClock`
-     * sem que este código precise saber que está sendo testado.
+     * A hora vem do `Clock` do Effect, e não de `new Date()`. `Clock` é um
+     * serviço do runtime, como os repositórios — a diferença é que este já vem
+     * pronto na biblioteca. A consequência aparece quando uma regra passa a
+     * depender do tempo de verdade (o `closedAt` de um Deal, na fatia 09):
+     * quem a testa troca o relógio por `TestClock` e a data para de variar, sem
+     * que este código precise saber que está sendo testado.
      */
     const now = new Date(yield* Clock.currentTimeMillis);
 
@@ -107,8 +110,13 @@ export const registerLeadRoutes = (app: FastifyInstance, runtime: AppRuntime): v
     );
 
     return run(reply, program, (reply, lead) =>
-      // 201 e o contato criado no corpo: é o que deixa a tela desenhar a linha
-      // nova sem uma segunda ida ao servidor.
+      /*
+       * 201 com o recurso que nasceu — identificador e responsável resolvidos —,
+       * no mesmo Schema da listagem. A tela não usa esse corpo para desenhar a
+       * linha à mão: recortar a lista no navegador é justamente o que este CRM
+       * não faz, então ela invalida o cache e deixa o servidor devolver a página
+       * certa, já com o contato no lugar que a ordenação mandar.
+       */
       reply.status(201).send(Schema.encodeSync(LeadListItem)(lead)),
     );
   });

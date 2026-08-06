@@ -6,6 +6,7 @@ import {
 } from '@kikos/domain';
 import { useForm } from 'react-hook-form';
 import { ApiError } from '../lib/api';
+import { errorProp, generalError } from '../lib/formErrors';
 import { LEAD_SOURCE_LABELS } from '../lib/labels';
 import { useCreateLead } from '../lib/leads';
 import { useSellers } from '../lib/sellers';
@@ -50,13 +51,6 @@ const FIELDS = Object.keys(EMPTY_FORM) as readonly (keyof CreateLeadInputEncoded
 const isField = (path: string): path is keyof CreateLeadInputEncoded =>
   FIELDS.some((field) => field === path);
 
-/**
- * Passar `error={undefined}` é proibido por `exactOptionalPropertyTypes`, então
- * o campo sem erro recebe prop nenhuma.
- */
-const errorProp = (message: string | undefined) =>
-  message === undefined ? {} : { error: message };
-
 export interface CreateLeadModalProps {
   readonly onClose: () => void;
 }
@@ -96,15 +90,19 @@ export const CreateLeadModal = ({ onClose }: CreateLeadModalProps) => {
   });
 
   /*
-   * A mensagem geral só aparece quando a recusa não é de campo — senão a mesma
-   * queixa apareceria duas vezes na tela. É o caso do responsável que não existe
-   * mais (404) e o de o servidor não responder.
+   * O aviso no topo do formulário: a recusa que não pertence a campo nenhum —
+   * o responsável que não existe mais (404) e o servidor que não respondeu.
    */
-  const generalError =
-    create.error === null ||
-    (create.error instanceof ApiError && create.error.issues.some((i) => isField(i.path)))
-      ? undefined
-      : create.error.message;
+  const formError = generalError(create.error, FIELDS);
+
+  /*
+   * Sem a lista de vendedores não há escolha possível, e um `<select>` vazio
+   * sem explicação parece defeito da tela. A queixa vai no próprio campo: é
+   * dele que o vendedor está esperando alguma coisa.
+   */
+  const sellersError = sellers.isError
+    ? 'Não foi possível carregar os vendedores. Recarregue a página.'
+    : undefined;
 
   return (
     <Modal
@@ -127,12 +125,12 @@ export const CreateLeadModal = ({ onClose }: CreateLeadModalProps) => {
       {/* `noValidate`: quem valida é o Schema, e o balão nativo do navegador
           falaria em outro idioma e em outro lugar da tela. */}
       <form id={FORM_ID} onSubmit={submit} noValidate className="flex flex-col gap-5">
-        {generalError === undefined ? null : (
+        {formError === undefined ? null : (
           <p
             role="alert"
             className="rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
           >
-            {generalError}
+            {formError}
           </p>
         )}
 
@@ -217,18 +215,16 @@ export const CreateLeadModal = ({ onClose }: CreateLeadModalProps) => {
             htmlFor="lead-owner"
             label="Vendedor responsável"
             required
-            {...errorProp(errors.ownerId?.message)}
+            {...errorProp(errors.ownerId?.message ?? sellersError)}
           >
             {/* A lista vem de `/users?role=SELLER`: não existe tabela de
                 vendedor, e sim User com papel de vendedor (ADR-0001). */}
             <Select
               id="lead-owner"
-              disabled={sellers.data === undefined}
+              disabled={sellers.isPending}
               {...form.register('ownerId')}
             >
-              <option value="">
-                {sellers.data === undefined ? 'Carregando…' : 'Selecione…'}
-              </option>
+              <option value="">{sellers.isPending ? 'Carregando…' : 'Selecione…'}</option>
               {(sellers.data ?? []).map((seller) => (
                 <option key={seller.id} value={seller.id}>
                   {seller.name}

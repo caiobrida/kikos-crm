@@ -1,4 +1,4 @@
-import { Data } from 'effect';
+import { Data, ParseResult } from 'effect';
 
 /*
  * Os erros de domínio, como dados.
@@ -30,6 +30,23 @@ export class ValidationFailed extends Data.TaggedError('ValidationFailed')<{
   readonly message: string;
   readonly issues: readonly ValidationIssue[];
 }> {}
+
+/**
+ * Achata a recusa de um Schema na lista de queixas por campo.
+ *
+ * O erro de parse do Effect é uma *árvore* — struct, campo, refinamento —, e
+ * `ParseResult.ArrayFormatter` a percorre até as folhas. É esta a forma que a
+ * API devolve em `issues`, e é a mesma que o resolver do react-hook-form produz
+ * do outro lado: por isso a tela sabe pintar o campo culpado sem saber se a
+ * recusa veio do navegador ou do servidor.
+ */
+export const toValidationIssues = (
+  error: ParseResult.ParseError,
+): readonly ValidationIssue[] =>
+  ParseResult.ArrayFormatter.formatErrorSync(error).map((issue) => ({
+    path: issue.path.join('.'),
+    message: issue.message,
+  }));
 
 /** E-mail ou senha errados no login. → 401 */
 export class InvalidCredentials extends Data.TaggedError('InvalidCredentials')<{

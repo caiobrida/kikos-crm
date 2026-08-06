@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
-import { Either, ParseResult, Schema } from 'effect';
+import { Either, Schema } from 'effect';
+import { toValidationIssues } from './errors';
 import { CreateLeadInput } from './lead';
 
 /*
@@ -44,16 +45,17 @@ const accept = (form: Record<string, unknown> = {}) => {
   return result.right;
 };
 
-/** As queixas por campo, no mesmo formato que a API devolve em `issues`. */
+/**
+ * As queixas por campo. Passam pelo mesmo `toValidationIssues` que a API usa
+ * para montar o corpo de erro, então o que se afirma aqui é o texto que a tela
+ * de fato recebe — não uma leitura paralela da recusa.
+ */
 const reject = (form: Record<string, unknown>): ReadonlyMap<string, string> => {
   const result = decode(form);
   if (Either.isRight(result)) throw new Error('Esperava recusa, mas aceitou.');
 
   return new Map(
-    ParseResult.ArrayFormatter.formatErrorSync(result.left).map((issue) => [
-      issue.path.join('.'),
-      issue.message,
-    ]),
+    toValidationIssues(result.left).map((issue) => [issue.path, issue.message]),
   );
 };
 

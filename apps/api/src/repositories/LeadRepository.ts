@@ -87,8 +87,9 @@ export class LeadRepository extends Context.Tag('LeadRepository')<
     readonly list: (query: LeadListQuery) => Effect.Effect<Slice<LeadWithOwner>>;
     /**
      * Grava o contato e devolve a linha como a lista a mostra — com o
-     * responsável já resolvido, para que a tela desenhe a linha nova sem
-     * precisar de uma segunda consulta.
+     * responsável já resolvido, que é o que a rota responde no 201. Devolver o
+     * mesmo formato da listagem, e não o registro cru, mantém um Schema só
+     * descrevendo "um Lead como o CRM o mostra".
      */
     readonly create: (lead: NewLead) => Effect.Effect<LeadWithOwner>;
   }

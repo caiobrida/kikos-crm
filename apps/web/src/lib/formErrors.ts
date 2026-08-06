@@ -1,0 +1,53 @@
+import type { ValidationIssue } from '@kikos/domain';
+import { ApiError } from './api';
+
+/*
+ * Como uma recusa do servidor vira texto na tela.
+ *
+ * Todo formulário do CRM tem o mesmo problema: a API pode recusar apontando um
+ * campo (`ValidationFailed`, com `issues`) ou recusar em bloco — credencial
+ * errada, responsável que não existe mais, servidor fora do ar. O primeiro caso
+ * pertence ao campo; o segundo, a um aviso no topo do formulário. Resolver isso
+ * uma vez aqui evita que cada tela invente a sua regra — e que uma delas
+ * esqueça de tratar o caso em que nem resposta houve.
+ */
+
+/** O que a rede devolve quando nem chegou a haver resposta para ler. */
+const UNREACHABLE = 'Não foi possível falar com o servidor. Tente de novo.';
+
+/** As queixas por campo que a API devolveu, ou nenhuma. */
+const issuesOf = (error: unknown): readonly ValidationIssue[] =>
+  error instanceof ApiError ? error.issues : [];
+
+/** A mensagem do campo, quando a recusa apontou este campo. */
+export const fieldError = (error: unknown, path: string): string | undefined =>
+  issuesOf(error).find((issue) => issue.path === path)?.message;
+
+/**
+ * O aviso geral do formulário.
+ *
+ * Só existe quando a recusa **não** é de campo — senão a mesma queixa apareceria
+ * duas vezes na tela. E nunca é a mensagem crua de um erro que não veio da API:
+ * um `fetch` que falha traz `"Failed to fetch"`, em inglês, escrito para
+ * desenvolvedor e não para vendedor.
+ */
+export const generalError = (
+  error: unknown,
+  fields: readonly string[],
+): string | undefined => {
+  if (error === null || error === undefined) return undefined;
+  if (!(error instanceof ApiError)) return UNREACHABLE;
+
+  return error.issues.some((issue) => fields.includes(issue.path))
+    ? undefined
+    : error.message;
+};
+
+/**
+ * O erro de um campo, como prop do `Field`.
+ *
+ * `exactOptionalPropertyTypes` proíbe passar `error={undefined}`, então o campo
+ * sem erro precisa receber prop nenhuma.
+ */
+export const errorProp = (message: string | undefined) =>
+  message === undefined ? {} : { error: message };

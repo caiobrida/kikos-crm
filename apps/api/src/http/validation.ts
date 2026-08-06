@@ -1,13 +1,14 @@
-import { ValidationFailed } from '@kikos/domain';
-import { Effect, ParseResult, Schema } from 'effect';
+import { ValidationFailed, toValidationIssues } from '@kikos/domain';
+import { Effect, Schema } from 'effect';
 
 /**
  * Decodifica uma entrada da requisição com um Schema do pacote compartilhado, e
  * traduz a recusa em `ValidationFailed`.
  *
- * `ParseResult.ArrayFormatter` achata o erro de parse — que é uma árvore — numa
- * lista de `{ path, message }`. É esse formato que deixa o app web pintar o
- * campo culpado em vez de mostrar um "dados inválidos" genérico.
+ * `errors: 'all'` junta todas as queixas numa recusa só — a tela pinta os
+ * campos errados de uma vez, em vez de revelar o próximo erro a cada tentativa.
+ * Quem as achata numa lista de `{ path, message }` é `toValidationIssues`, do
+ * pacote compartilhado, para que o formato da recusa seja um só nos dois lados.
  */
 const decodeInput = <A, I>(
   schema: Schema.Schema<A, I>,
@@ -17,13 +18,7 @@ const decodeInput = <A, I>(
   Schema.decodeUnknown(schema)(input, { errors: 'all' }).pipe(
     Effect.mapError(
       (parseError) =>
-        new ValidationFailed({
-          message,
-          issues: ParseResult.ArrayFormatter.formatErrorSync(parseError).map((issue) => ({
-            path: issue.path.join('.'),
-            message: issue.message,
-          })),
-        }),
+        new ValidationFailed({ message, issues: toValidationIssues(parseError) }),
     ),
   );
 
