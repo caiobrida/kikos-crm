@@ -1,0 +1,8 @@
+# Só o que o Prisma gera de único neste pacote. Tudo que é transversal
+# (node_modules, dist, .env, logs) está no .gitignore da raiz — o padrão do
+# git já é recursivo, e repetir as mesmas linhas por pacote gera divergência.
+
+# O client do Prisma, gerado por `prisma generate` no postinstall. Desde o
+# Prisma 7 a saída é um caminho próprio dentro do pacote, e não node_modules.
+# `prisma/migrations/` continua versionado: sem elas ninguém reproduz o banco.
+src/generated/

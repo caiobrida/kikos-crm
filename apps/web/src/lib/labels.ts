@@ -31,7 +31,12 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   LOST: 'Perdido',
 };
 
+/*
+ * O cargo, como aparece no rodapé da barra lateral. `MANAGER` é o papel de
+ * gestão, e no time da Kikos quem o ocupa é o Diretor de Vendas — o rótulo dos
+ * mockups. Ver CONTEXT.md, verbete "Role".
+ */
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
-  MANAGER: 'Gestor',
+  MANAGER: 'Diretor de Vendas',
   SELLER: 'Vendedor',
 };
