@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/*
+ * A identidade visual do Kikos CRM.
+ *
+ * Tailwind v4 dispensa `tailwind.config.js`: o `@theme` abaixo declara os
+ * tokens como variáveis CSS e o Tailwind gera as utilidades correspondentes
+ * (`bg-brand-500`, `text-ink-muted`, `ring-won-500/30`…).
+ *
+ * Três cores carregam significado e não devem ser usadas por decoração:
+ *   brand (laranja) — ação
+ *   won   (verde)   — negócio ganho
+ *   lost  (vermelho)— negócio perdido
+ */
+@theme {
+  /* Superfícies, do fundo da página para o elemento mais elevado. */
+  --color-surface-950: #0a0c0f;
+  --color-surface-900: #101318;
+  --color-surface-800: #161a21;
+  --color-surface-700: #1d222b;
+  --color-surface-600: #272d38;
+  --color-surface-500: #364050;
+
+  /* Texto. */
+  --color-ink: #f2f5f8;
+  --color-ink-muted: #98a2b3;
+  --color-ink-faint: #6a7383;
+
+  /* Laranja de ação. */
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+
+  /* Verde de ganho. */
+  --color-won-300: #6ee7a8;
+  --color-won-400: #34d17f;
+  --color-won-500: #1fb463;
+  --color-won-600: #15904e;
+
+  /* Vermelho de perda. */
+  --color-lost-300: #fca5a5;
+  --color-lost-400: #f87171;
+  --color-lost-500: #ef4444;
+  --color-lost-600: #dc2626;
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-surface-950);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Um anel de foco consistente em tudo que é focável, na cor de ação. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}

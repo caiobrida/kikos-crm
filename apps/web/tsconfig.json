@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    /* Sem `node`: o código do app roda no navegador. O `vite.config.ts` é
+       quem precisa de Node, e ele é checado pelo `tsconfig.node.json`. */
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

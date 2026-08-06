@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* Sem `DOM` e sem `@types/node`: o pacote é browser-safe, e é aqui que
+       essa regra deixa de ser combinado e vira erro de compilação. Um
+       `process.env` ou um `import fs from 'node:fs'` não passa no typecheck. */
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

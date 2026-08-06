@@ -1,0 +1,17 @@
+{
+  "name": "@kikos/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Regras, Schemas e erros de domínio — browser-safe, compartilhado pela API e pelo app web",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "effect": "^3.22.1"
+  }
+}

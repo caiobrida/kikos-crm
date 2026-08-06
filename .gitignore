@@ -1,0 +1,26 @@
+# dependências
+node_modules/
+
+# ambiente — a negação precisa vir depois do padrão
+.env
+.env.*
+!.env.example
+
+# saída de build
+dist/
+build/
+*.tsbuildinfo
+
+# testes
+coverage/
+
+# logs
+*.log
+npm-debug.log*
+
+# editor e sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
