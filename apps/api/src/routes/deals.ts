@@ -410,15 +410,18 @@ const closeDeal = (
 > =>
   Effect.gen(function* () {
     const deal = yield* requireDeal(id);
+    const refusal = refuseDealClose(deal.stage);
 
-    if (refuseDealClose(deal.stage) !== undefined) {
+    if (refusal !== undefined) {
       /*
-       * A frase vem do pacote compartilhado, junto da regra, como a das
-       * recusas de movimento: a explicação que o navegador mostra e a que a API
-       * devolve no corpo do 409 são a mesma.
+       * A frase é indexada **pela recusa**, e não escrita à mão, como em
+       * `stageMoveError`: é o que faz uma recusa nova nascida na regra chegar
+       * aqui sem mensagem e quebrar o typecheck, em vez de escapar com a
+       * explicação de outra. A frase mora no pacote compartilhado, junto da
+       * regra, e é a mesma que o detalhamento usa.
        */
       return yield* Effect.fail(
-        new DealAlreadyClosed({ message: DEAL_CLOSE_REFUSALS.DealAlreadyClosed }),
+        new DealAlreadyClosed({ message: DEAL_CLOSE_REFUSALS[refusal] }),
       );
     }
 

@@ -1,4 +1,4 @@
-import type { DealDetail } from '@kikos/domain';
+import { refuseDealClose, type DealDetail } from '@kikos/domain';
 import { useState } from 'react';
 import { ApiError } from '../lib/api';
 import { formatDay, formatLastInteraction } from '../lib/dates';
@@ -166,6 +166,15 @@ export interface DealDetailModalProps {
 const DealActions = ({ deal }: { readonly deal: DealDetail }) => {
   const [refusal, setRefusal] = useState<string>();
 
+  /*
+   * A **mesma** regra que a rota consulta antes de escrever, e não um
+   * `deal.result === 'OPEN'` escrito aqui: o par estágio/resultado é ortogonal
+   * (ADR-0003) e hoje as duas leituras coincidem, mas quem decide o que é um
+   * negócio terminal é a regra, num lugar só. É o mesmo argumento que põe
+   * `refuseStageMove` na coluna do board antes de qualquer ida ao servidor.
+   */
+  const refused = refuseDealClose(deal.stage);
+
   return (
     <>
       {refusal === undefined ? null : (
@@ -174,7 +183,7 @@ const DealActions = ({ deal }: { readonly deal: DealDetail }) => {
         </p>
       )}
 
-      {deal.result === 'OPEN' ? (
+      {refused === undefined ? (
         <CloseDealActions
           dealId={deal.id}
           onClosed={() => setRefusal(undefined)}

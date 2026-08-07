@@ -5,6 +5,7 @@ import {
   type DealBoardColumn,
   type DealListItem,
   type DealStage,
+  type StageDrop,
 } from '@kikos/domain';
 import { useState, type DragEvent } from 'react';
 import { cn } from '../lib/cn';
@@ -33,6 +34,42 @@ import { DealCard } from './DealCard';
  * — ou, na coluna Fechado, o que o drop vai abrir —, num aviso sobreposto que
  * não desloca o board enquanto o card está no ar.
  */
+/** O que a coluna faz com o card no ar: aceita o drop, e o que diz enquanto ele paira. */
+interface DropReading {
+  readonly accepts: boolean;
+  readonly hint: string | undefined;
+}
+
+/**
+ * A leitura do gesto, num `switch` só.
+ *
+ * As duas respostas saem juntas de propósito. Derivá-las em expressões
+ * separadas — uma para "aceita?", outra para "o que dizer?" — deixaria uma
+ * forma nova de `StageDrop` virar silenciosamente uma coluna que aceita o drop
+ * sem dizer o que vai fazer com ele. Aqui o compilador cobra o caso novo, como
+ * cobra no board, que é o outro lugar onde a mesma união é lida.
+ */
+const readDrop = (drop: StageDrop | undefined): DropReading => {
+  if (drop === undefined) return { accepts: false, hint: undefined };
+
+  switch (drop.kind) {
+    case 'refused':
+      // A mesma frase que a API devolveria: as duas saem da regra compartilhada.
+      return { accepts: false, hint: STAGE_MOVE_REFUSALS[drop.reason] };
+
+    case 'close':
+      // A coluna Fechado aceita o drop e não move nada: ela abre a escolha.
+      return {
+        accepts: true,
+        hint: 'Solte aqui para encerrar o negócio como ganho ou perdido.',
+      };
+
+    case 'move':
+      // O caso comum não precisa de frase: o realce da coluna já diz tudo.
+      return { accepts: true, hint: undefined };
+  }
+};
+
 export interface BoardColumnProps {
   readonly column: DealBoardColumn;
   /** O recorte do board, que as páginas seguintes precisam repetir. */
@@ -85,19 +122,9 @@ export const BoardColumn = ({
    * com 422 —; o que mudou é que esta coluna passou a aceitar o drop para abrir
    * a escolha entre Ganho e Perdido (ADR-0003).
    */
-  const drop = isDropTarget ? stageDrop(dragging.stage, column.stage) : undefined;
-
-  const accepts = drop !== undefined && drop.kind !== 'refused';
-
-  /** O que a coluna tem a dizer sobre o card no ar: por que recusa, ou o que fará. */
-  const hint =
-    drop === undefined
-      ? undefined
-      : drop.kind === 'refused'
-        ? STAGE_MOVE_REFUSALS[drop.reason]
-        : drop.kind === 'close'
-          ? 'Solte aqui para encerrar o negócio como ganho ou perdido.'
-          : undefined;
+  const { accepts, hint } = readDrop(
+    isDropTarget ? stageDrop(dragging.stage, column.stage) : undefined,
+  );
 
   const handleDragOver = (event: DragEvent<HTMLElement>) => {
     /*

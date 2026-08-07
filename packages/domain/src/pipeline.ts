@@ -150,8 +150,13 @@ export const refuseDealClose = (from: DealStage): DealCloseRefusal | undefined =
 
 /**
  * O motivo da recusa em português, pronto para a tela — como em
- * `STAGE_MOVE_REFUSALS`, e pelo mesmo motivo: a frase que o navegador mostra ao
- * recusar o clique e a que a API devolve no corpo do 409 são a mesma.
+ * `STAGE_MOVE_REFUSALS`.
+ *
+ * A diferença para aquele é onde a frase aparece. O board recusa o arrasto
+ * sozinho e mostra o motivo sem falar com o servidor; aqui o detalhamento usa a
+ * regra para **não oferecer** os botões, e por isso a frase só é lida quando o
+ * servidor recusa de verdade — a corrida em que outra pessoa encerrou o negócio
+ * primeiro, e o 409 chega com este mesmo texto no corpo.
  *
  * Ela é distinta da recusa de movimento apesar de a tag ser a mesma, porque o
  * que a pessoa acabou de tentar é outro: lá ela arrastou um card e quer saber

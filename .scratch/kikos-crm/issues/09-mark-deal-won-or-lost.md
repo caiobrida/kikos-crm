@@ -75,6 +75,17 @@ Encerrar como perdido não destrói nada — registra que a venda não aconteceu
 `danger` faria "Marcar como Perdido" e "Remover" dizerem a mesma coisa a quem lê a interface por
 convenção de cor.
 
+**O painel lateral ganhou o selo de resultado, ao lado do de estágio.** O spec enumera o
+conteúdo do painel e não o inclui, então fica registrado: sem ele, um negócio ganho e um perdido
+apareceriam idênticos no resumo — os dois dizendo apenas "Fechado" —, e o painel contradiria o
+card colorido de onde a pessoa acabou de clicar. É a mesma regra que o detalhamento já seguia:
+o selo só aparece quando existe desfecho.
+
+**Dois comentários de exemplo mudaram de data no seed.** Os registros de encerramento nascem no
+mesmo instante do `closedAt` de cada negócio fechado, e dois comentários que já existiam caíam
+exatamente nesse instante; eles recuaram um dia para que a linha do tempo dos dois negócios
+tenha ordem estrita. O texto deles não mudou.
+
 **Achado fora do escopo, corrigido junto:** o teste `deixa um registro por movimento` em
 `comments.test.ts` falhava em cerca de uma a cada seis execuções da suíte, **antes desta fatia**.
 Dois movimentos seguidos caem no mesmo milissegundo, e nesse empate a linha do tempo desempata
