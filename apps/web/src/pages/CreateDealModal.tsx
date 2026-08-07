@@ -7,11 +7,10 @@ import {
 } from '@kikos/domain';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { ApiError } from '../lib/api';
 import { useCreateDeal } from '../lib/deals';
-import { errorProp, generalError } from '../lib/formErrors';
+import { applyApiIssues, errorProp, generalError } from '../lib/formErrors';
 import { DEAL_STAGE_LABELS } from '../lib/labels';
-import { useSellers } from '../lib/sellers';
+import { SELLERS_UNAVAILABLE, useSellers } from '../lib/sellers';
 import { Button } from '../ui/Button';
 import { Field, Input, Select, Textarea } from '../ui/Field';
 import { LeadPicker } from '../ui/LeadPicker';
@@ -62,9 +61,6 @@ const EMPTY_FORM: CreateDealInputEncoded = {
 
 const FIELDS = Object.keys(EMPTY_FORM) as readonly (keyof CreateDealInputEncoded)[];
 
-const isField = (path: string): path is keyof CreateDealInputEncoded =>
-  FIELDS.some((field) => field === path);
-
 export interface CreateDealModalProps {
   readonly onClose: () => void;
 }
@@ -112,17 +108,7 @@ export const CreateDealModal = ({ onClose }: CreateDealModalProps) => {
   const submit = form.handleSubmit((input) => {
     create.mutate(input, {
       onSuccess: onClose,
-      onError: (error) => {
-        // A recusa da API vem no mesmo formato do resolver — `{ path, message }`
-        // —, então ela se acomoda embaixo do campo culpado sem tradução.
-        if (!(error instanceof ApiError)) return;
-
-        for (const issue of error.issues) {
-          if (isField(issue.path)) {
-            form.setError(issue.path, { message: issue.message });
-          }
-        }
-      },
+      onError: (error) => applyApiIssues(error, FIELDS, form.setError),
     });
   });
 
@@ -133,9 +119,7 @@ export const CreateDealModal = ({ onClose }: CreateDealModalProps) => {
    */
   const formError = generalError(create.error, FIELDS);
 
-  const sellersError = sellers.isError
-    ? 'Não foi possível carregar os vendedores. Recarregue a página.'
-    : undefined;
+  const sellersError = sellers.isError ? SELLERS_UNAVAILABLE : undefined;
 
   return (
     <Modal
@@ -232,11 +216,12 @@ export const CreateDealModal = ({ onClose }: CreateDealModalProps) => {
               hint="Busque um contato já cadastrado pelo nome."
               {...errorProp(errors.leadId?.message)}
             >
+              {/* Sem validar na saída do campo: como todos os outros, ele só é
+                  cobrado no envio — e a partir daí a escolha limpa a queixa. */}
               <LeadPicker
                 id="deal-lead"
                 value={lead}
                 onChange={chooseLead}
-                onBlur={() => void form.trigger('leadId')}
                 {...(errors.leadId === undefined ? {} : { invalid: true })}
               />
             </Field>

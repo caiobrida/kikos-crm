@@ -484,9 +484,9 @@ describe('POST /deals', () => {
         source: 'REFERRAL',
         ownerId: harness.seller.id,
       });
-      const novo = Schema.decodeUnknownSync(LeadListItem)(response.json());
+      const created = Schema.decodeUnknownSync(LeadListItem)(response.json());
 
-      const deal = await create({ leadId: novo.id });
+      const deal = await create({ leadId: created.id });
 
       expect(deal.lead.name).toBe('Juliana Prado');
     });

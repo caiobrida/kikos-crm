@@ -5,11 +5,10 @@ import {
   type CreateLeadInputEncoded,
 } from '@kikos/domain';
 import { useForm } from 'react-hook-form';
-import { ApiError } from '../lib/api';
-import { errorProp, generalError } from '../lib/formErrors';
+import { applyApiIssues, errorProp, generalError } from '../lib/formErrors';
 import { LEAD_SOURCE_LABELS } from '../lib/labels';
 import { useCreateLead } from '../lib/leads';
-import { useSellers } from '../lib/sellers';
+import { SELLERS_UNAVAILABLE, useSellers } from '../lib/sellers';
 import { Button } from '../ui/Button';
 import { Field, Input, Select, Textarea } from '../ui/Field';
 import { Modal } from '../ui/Modal';
@@ -48,9 +47,6 @@ const EMPTY_FORM: CreateLeadInputEncoded = {
 
 const FIELDS = Object.keys(EMPTY_FORM) as readonly (keyof CreateLeadInputEncoded)[];
 
-const isField = (path: string): path is keyof CreateLeadInputEncoded =>
-  FIELDS.some((field) => field === path);
-
 export interface CreateLeadModalProps {
   readonly onClose: () => void;
 }
@@ -75,17 +71,9 @@ export const CreateLeadModal = ({ onClose }: CreateLeadModalProps) => {
   const submit = form.handleSubmit((input) => {
     create.mutate(input, {
       onSuccess: onClose,
-      onError: (error) => {
-        // A recusa da API vem no mesmo formato do resolver — `{ path, message }`
-        // —, então ela se acomoda embaixo do campo culpado sem tradução.
-        if (!(error instanceof ApiError)) return;
-
-        for (const issue of error.issues) {
-          if (isField(issue.path)) {
-            form.setError(issue.path, { message: issue.message });
-          }
-        }
-      },
+      // A recusa da API vem no mesmo formato do resolver — `{ path, message }`
+      // —, então ela se acomoda embaixo do campo culpado sem tradução.
+      onError: (error) => applyApiIssues(error, FIELDS, form.setError),
     });
   });
 
@@ -100,9 +88,7 @@ export const CreateLeadModal = ({ onClose }: CreateLeadModalProps) => {
    * sem explicação parece defeito da tela. A queixa vai no próprio campo: é
    * dele que o vendedor está esperando alguma coisa.
    */
-  const sellersError = sellers.isError
-    ? 'Não foi possível carregar os vendedores. Recarregue a página.'
-    : undefined;
+  const sellersError = sellers.isError ? SELLERS_UNAVAILABLE : undefined;
 
   return (
     <Modal

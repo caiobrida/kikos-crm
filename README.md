@@ -128,10 +128,11 @@ existe no Schema de entrada: não há como o corpo da requisição escolhê-los.
 `CreateDealInput` faz o mesmo trabalho para "Cadastrar Novo Negócio", e traz duas coisas que o
 cadastro de Lead não tinha.
 
-A primeira é uma **regra pura compartilhada**: `isOpenDealStage`, em
-`packages/domain/src/pipeline.ts`, diz quais Stages aceitam um negócio em aberto. É a mesma
-função nas duas pontas — o formulário monta o `<select>` a partir dela e nem oferece "Fechado",
-e a rota recusa quem enviar `CLOSED` por fora da tela. A recusa é **422, e não 400**: o valor é
+A primeira é uma **regra pura compartilhada**, em `packages/domain/src/pipeline.ts`: quais Stages
+aceitam um negócio em aberto. As duas pontas leem da mesma lista — o formulário monta o
+`<select>` a partir de `OPEN_DEAL_STAGES` e nem oferece "Fechado"; a rota recusa quem enviar
+`CLOSED` por fora da tela com `isOpenDealStage`, derivado dessa lista. A recusa é
+**422, e não 400**: o valor é
 um Stage legítimo do vocabulário e o corpo está bem formado; o que não existe é o movimento.
 Chega-se em Fechado marcando Ganho ou Perdido (ADR-0003).
 

@@ -146,7 +146,7 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
           ).pipe(Option.map(toLeadRecord)),
         ),
 
-      recordDealActivity: (id, activity) =>
+      recordLeadInteraction: (id, interaction) =>
         Effect.promise(async () => {
           /*
            * `updateMany` e não `update`: só ele aceita `deletedAt` no `where`.
@@ -155,7 +155,7 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
            */
           await prisma.lead.updateMany({
             where: { id, deletedAt: null },
-            data: { status: activity.status, lastInteractionAt: activity.at },
+            data: { status: interaction.status, lastInteractionAt: interaction.at },
           });
         }),
 

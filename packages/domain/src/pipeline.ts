@@ -3,9 +3,10 @@ import { OPEN_DEAL_STAGES, type DealStage } from './enums';
 /*
  * As regras do Pipeline — puras, sem Schema, sem Effect, sem I/O.
  *
- * São as funções que as duas pontas chamam: o app web para não oferecer (nem
- * aceitar) um movimento que o CRM não permite, e a API para recusar quem tentar
- * por fora da tela. Uma regra só, escrita num lugar só — é o que impede o
+ * As duas pontas leem daqui, cada uma do jeito que precisa: o formulário monta
+ * o `<select>` de estágio inicial a partir de `OPEN_DEAL_STAGES`, e a rota
+ * recusa quem enviar outra coisa por fora da tela com `isOpenDealStage` — que é
+ * derivado da mesma lista. Uma regra só, escrita num lugar só; é o que impede o
  * formulário e a rota de discordarem sobre o que é um funil válido.
  */
 

@@ -26,11 +26,10 @@ export interface LeadPickerProps {
   /** O contato escolhido, ou `undefined` enquanto ninguém escolheu. */
   readonly value: LeadListItem | undefined;
   readonly onChange: (lead: LeadListItem | undefined) => void;
-  readonly onBlur?: () => void;
   readonly invalid?: boolean;
 }
 
-export const LeadPicker = ({ id, value, onChange, onBlur, invalid }: LeadPickerProps) => {
+export const LeadPicker = ({ id, value, onChange, invalid }: LeadPickerProps) => {
   const [term, setTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   /** Qual opção as setas destacaram. Volta ao topo a cada busca nova. */
@@ -116,10 +115,7 @@ export const LeadPicker = ({ id, value, onChange, onBlur, invalid }: LeadPickerP
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(value === undefined)}
-          onBlur={() => {
-            setIsOpen(false);
-            onBlur?.();
-          }}
+          onBlur={() => setIsOpen(false)}
           onKeyDown={handleKeyDown}
         />
 

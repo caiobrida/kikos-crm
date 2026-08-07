@@ -67,10 +67,10 @@ export type NewLead = Omit<LeadRecord, 'id' | 'deletedAt'>;
  * do acontecimento.
  *
  * Os dois andam juntos de propósito — quem decide o status é o domínio, com a
- * regra "último evento vence", e a mesma ação é o que faz do Lead o contato com
- * atividade mais recente da carteira.
+ * regra "último evento vence", e a mesma ação é o que torna este o contato de
+ * última interação mais recente da carteira (ver o verbete em CONTEXT.md).
  */
-export interface DealActivity {
+export interface LeadInteraction {
   readonly status: LeadStatus;
   readonly at: Date;
 }
@@ -110,9 +110,9 @@ export class LeadRepository extends Context.Tag('LeadRepository')<
      * não existir ou tiver sido removido — quem precisa da recusa é o caso de
      * uso, e ele já perguntou antes de escrever.
      */
-    readonly recordDealActivity: (
+    readonly recordLeadInteraction: (
       id: LeadId,
-      activity: DealActivity,
+      interaction: LeadInteraction,
     ) => Effect.Effect<void>;
   }
 >() {}
@@ -266,11 +266,15 @@ export const LeadRepositoryInMemory = (
             ),
           ),
 
-        recordDealActivity: (id, activity) =>
+        recordLeadInteraction: (id, interaction) =>
           Ref.update(store, (leads) =>
             leads.map((lead) =>
               lead.id === id && lead.deletedAt === null
-                ? { ...lead, status: activity.status, lastInteractionAt: activity.at }
+                ? {
+                    ...lead,
+                    status: interaction.status,
+                    lastInteractionAt: interaction.at,
+                  }
                 : lead,
             ),
           ),

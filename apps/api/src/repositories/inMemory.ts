@@ -30,8 +30,10 @@ import {
  * separados, o duble mentiria justamente no caminho que esta fatia inteira
  * percorre.
  *
- * `Layer.unwrapEffect` constrói a Layer a partir de um Effect: os `Ref` nascem
- * uma vez, quando o runtime é montado, e não a cada serviço pedido.
+ * `Layer.unwrapEffect` constrói a Layer **a partir de** um Effect — em
+ * TypeScript comum seria uma função que faz um preparo antes de devolver o
+ * objeto pronto. O preparo aqui é criar os `Ref`, e ele acontece uma vez, quando
+ * o runtime é montado, e não a cada serviço pedido.
  */
 export const InMemoryRepositories = (data: {
   readonly users: readonly UserRecord[];

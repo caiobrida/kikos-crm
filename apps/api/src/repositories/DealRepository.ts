@@ -185,12 +185,6 @@ const summarize = (leads: readonly LeadRecord[]): ReadonlyMap<LeadId, LeadSummar
     ]),
   );
 
-/** O funil e a carteira lidos no mesmo instante, prontos para uma consulta. */
-interface World {
-  readonly deals: readonly DealRecord[];
-  readonly leadsById: ReadonlyMap<LeadId, LeadSummary>;
-}
-
 /**
  * A Layer em memória.
  *
@@ -276,24 +270,28 @@ export const DealRepositoryInMemory = (
         });
       };
 
-      const select = (world: World, query: DealListQuery): Slice<DealWithRelations> => {
-        const matching = world.deals.filter(
+      const select = (
+        deals: readonly DealRecord[],
+        leadsById: ReadonlyMap<LeadId, LeadSummary>,
+        query: DealListQuery,
+      ): Slice<DealWithRelations> => {
+        const matching = deals.filter(
           (deal) =>
             // O filtro de remoção lógica vem primeiro e não é opcional.
             deal.deletedAt === null &&
             (query.stage === undefined || deal.stage === query.stage) &&
             (query.search === undefined ||
-              matchesSearch(deal, query.search, world.leadsById)) &&
+              matchesSearch(deal, query.search, leadsById)) &&
             (query.ownerId === undefined || deal.ownerId === query.ownerId),
         );
 
-        const ordered = sortDeals(matching, query.sortBy, query.order, world.leadsById);
+        const ordered = sortDeals(matching, query.sortBy, query.order, leadsById);
         const from = (query.page - 1) * query.pageSize;
 
         return {
           data: ordered
             .slice(from, from + query.pageSize)
-            .map((deal) => resolve(deal, world.leadsById)),
+            .map((deal) => resolve(deal, leadsById)),
           // O total é do recorte inteiro, não da página devolvida.
           total: matching.length,
         };
@@ -304,19 +302,23 @@ export const DealRepositoryInMemory = (
        * consulta, em vez de guardar os Leads na montagem, é o que faz um
        * contato cadastrado agora já estar resolvido no card do negócio
        * seguinte.
+       *
+       * `Effect.all` sobre uma tupla é o `Promise.all` do Effect: ele espera os
+       * dois e devolve os resultados na mesma ordem.
        */
       const world = Effect.all([Ref.get(store), Ref.get(leadStore)]).pipe(
-        Effect.map(([deals, leads]) => ({ deals, leadsById: summarize(leads) })),
+        Effect.map(([deals, leads]) => [deals, summarize(leads)] as const),
       );
 
       return {
-        list: (query) => world.pipe(Effect.map((current) => select(current, query))),
+        list: (query) =>
+          world.pipe(Effect.map(([deals, leadsById]) => select(deals, leadsById, query))),
 
         board: (query) =>
           world.pipe(
-            Effect.map((current) =>
+            Effect.map(([deals, leadsById]) =>
               DEAL_STAGES.map((stage) => {
-                const slice = select(current, boardColumnQuery(stage, query));
+                const slice = select(deals, leadsById, boardColumnQuery(stage, query));
                 return { stage, total: slice.total, deals: slice.data };
               }),
             ),

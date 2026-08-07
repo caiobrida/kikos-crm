@@ -153,7 +153,7 @@ const createDeal = (
       lastInteractionAt: now,
     });
 
-    yield* leads.recordDealActivity(input.leadId, {
+    yield* leads.recordLeadInteraction(input.leadId, {
       status: LEAD_STATUS_AFTER_DEAL_CREATED,
       at: now,
     });
