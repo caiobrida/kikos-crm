@@ -85,15 +85,38 @@ export class LeadNotFound extends Data.TaggedError('LeadNotFound')<{
 }> {}
 
 /**
+ * O negócio não existe — ou foi removido. → 404
+ *
+ * Nasce das rotas que agem sobre um negócio pelo identificador da URL. Um card
+ * que a tela mostra pode ter sido removido por outra pessoa entre o carregar do
+ * board e o gesto de quem arrasta.
+ */
+export class DealNotFound extends Data.TaggedError('DealNotFound')<{
+  readonly message: string;
+}> {}
+
+/**
  * O movimento pedido não existe no Pipeline. → 422
  *
  * **422, e não 400**: o valor é um estágio legítimo do vocabulário, e o corpo
- * da requisição está bem formado — o que o CRM recusa é o movimento. Hoje a
- * queixa nasce de um negócio que tentou nascer em `CLOSED`; na fatia de
- * movimentação ela passa a cobrir também o card arrastado para a coluna
+ * da requisição está bem formado — o que o CRM recusa é o movimento. A queixa
+ * nasce de duas situações, e é a mesma regra pura que produz as duas: um
+ * negócio que tentou nascer em `CLOSED`, e um card arrastado para a coluna
  * Fechado (ADR-0003).
  */
 export class InvalidStageTransition extends Data.TaggedError('InvalidStageTransition')<{
+  readonly message: string;
+}> {}
+
+/**
+ * O negócio já foi encerrado, e negócio encerrado não aceita escrita. → 409
+ *
+ * **409, e não 422**: o movimento pedido pode até existir no funil; o que
+ * impede é o estado em que o negócio está — um conflito com o que já foi
+ * registrado. Vale para mover, e valerá para editar e para fechar de novo:
+ * reabrir negócio não existe (ADR-0003).
+ */
+export class DealAlreadyClosed extends Data.TaggedError('DealAlreadyClosed')<{
   readonly message: string;
 }> {}
 
@@ -107,4 +130,6 @@ export type DomainError =
   | Unauthorized
   | OwnerNotFound
   | LeadNotFound
-  | InvalidStageTransition;
+  | DealNotFound
+  | InvalidStageTransition
+  | DealAlreadyClosed;

@@ -7,13 +7,14 @@ import {
   type SortOrder,
   type UserId,
 } from '@kikos/domain';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Option } from 'effect';
 import type { Prisma } from '../generated/prisma/client';
 import { createPrismaClient } from '../prisma';
 import {
   DealRepository,
   boardColumnQuery,
   type DealColumn,
+  type DealRecord,
   type DealWithRelations,
 } from './DealRepository';
 import { escapeLikeWildcards } from './like';
@@ -44,6 +45,37 @@ const toDealWithRelations = (row: DealRow): DealWithRelations => ({
   id: row.id as DealId,
   lead: { ...row.lead, id: row.lead.id as LeadId },
   owner: { id: row.owner.id as UserId, name: row.owner.name },
+});
+
+/**
+ * O `SELECT` da linha inteira do domínio — as colunas que `DealRecord` declara,
+ * e nenhuma a mais. É o que o caso de uso lê para saber em que coluna o negócio
+ * está antes de decidir se o movimento vale.
+ */
+const RECORD_SELECT = {
+  id: true,
+  title: true,
+  valueInCents: true,
+  leadId: true,
+  ownerId: true,
+  stage: true,
+  result: true,
+  description: true,
+  expectedCloseDate: true,
+  closedAt: true,
+  lastInteractionAt: true,
+  deletedAt: true,
+} satisfies Prisma.DealSelect;
+
+type DealRecordRow = Prisma.DealGetPayload<{ select: typeof RECORD_SELECT }>;
+
+const toDealRecord = (row: DealRecordRow): DealRecord => ({
+  ...row,
+  // As marcas dos identificadores: o Prisma devolve `string`, o domínio pede o
+  // tipo marcado. A conferência de forma já foi feita pelo banco.
+  id: row.id as DealId,
+  leadId: row.leadId as LeadId,
+  ownerId: row.ownerId as UserId,
 });
 
 /** O que o board e a listagem filtram — tudo menos ordem e página. */
@@ -143,6 +175,36 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
           // O mesmo `select` da listagem: a linha volta pronta para o card, com
           // o Lead e o responsável trazidos pelo `JOIN` da própria inserção.
           const row = await prisma.deal.create({ data: deal, select: LIST_SELECT });
+
+          return toDealWithRelations(row);
+        }),
+
+      findById: (id) =>
+        Effect.promise(async () =>
+          Option.fromNullable(
+            // O filtro de remoção lógica mora aqui, como em toda leitura:
+            // `findFirst` com a cláusula, e não `findUnique` pelo identificador.
+            await prisma.deal.findFirst({
+              where: { id, deletedAt: null },
+              select: RECORD_SELECT,
+            }),
+          ).pipe(Option.map(toDealRecord)),
+        ),
+
+      moveToStage: (id, move) =>
+        Effect.promise(async () => {
+          /*
+           * A cláusula de remoção entra no `where` do próprio `update`: o caso
+           * de uso já perguntou se o negócio está lá, mas quem garante que ele
+           * continua lá no instante da escrita é o banco, e não a leitura de um
+           * instante atrás.
+           */
+          const row = await prisma.deal.update({
+            where: { id, deletedAt: null },
+            data: { stage: move.stage, lastInteractionAt: move.at },
+            // O mesmo `select` da listagem: a linha volta pronta para o card.
+            select: LIST_SELECT,
+          });
 
           return toDealWithRelations(row);
         }),

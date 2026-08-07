@@ -377,6 +377,8 @@ export interface TestHarness {
    * a API não devolve — o removido, que só existe do lado de cá da seam.
    */
   readonly leads: readonly LeadRecord[];
+  /** O funil como ele nasceu, pelo mesmo motivo: o negócio removido tem `id`. */
+  readonly deals: readonly DealRecord[];
   /**
    * Um GET já autenticado como o gestor — o caminho normal de toda tela do CRM.
    * A sessão é aberta uma vez na montagem, para não pagar um bcrypt por teste.
@@ -384,6 +386,11 @@ export interface TestHarness {
   readonly get: (url: string) => Promise<LightMyRequestResponse>;
   /** O mesmo para as escritas: o corpo vai como JSON, a sessão já vai junto. */
   readonly post: (
+    url: string,
+    payload: Record<string, unknown>,
+  ) => Promise<LightMyRequestResponse>;
+  /** A escrita parcial: uma ação sobre um registro que já existe. */
+  readonly patch: (
     url: string,
     payload: Record<string, unknown>,
   ) => Promise<LightMyRequestResponse>;
@@ -438,8 +445,10 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
     manager,
     seller,
     leads,
+    deals,
     get: (url) => app.inject({ method: 'GET', url, cookies }),
     post: (url, payload) => app.inject({ method: 'POST', url, cookies, payload }),
+    patch: (url, payload) => app.inject({ method: 'PATCH', url, cookies, payload }),
     close: async () => {
       await app.close();
       // Descarta as Layers, como o `main.ts` faz no shutdown.

@@ -1,7 +1,12 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Either, Schema } from 'effect';
+import { OPEN_DEAL_STAGES } from './enums';
 import { toValidationIssues } from './errors';
-import { CreateLeadInput } from './lead';
+import {
+  CreateLeadInput,
+  LEAD_STATUS_AFTER_DEAL_CREATED,
+  leadStatusAfterDealMoved,
+} from './lead';
 
 /*
  * O Schema de cadastro de Lead é puro, então vale o `it` comum — sem Layer, sem
@@ -163,5 +168,44 @@ describe('CreateLeadInput', () => {
       // erro a cada tentativa de salvar.
       expect([...issues.keys()].sort()).toEqual(['company', 'email', 'name']);
     });
+  });
+});
+
+/*
+ * A outra regra pura desta fatia: o status que o contato assume quando um
+ * negócio dele muda de estágio.
+ *
+ * Ela é o que faz a lista de Leads e o board contarem a mesma história — mover
+ * um card muda o selo da carteira sem que ninguém atualize duas telas na mão.
+ */
+describe('leadStatusAfterDealMoved', () => {
+  it('leva o contato para Em negociação quando a proposta saiu', () => {
+    expect(leadStatusAfterDealMoved('PROPOSAL_SENT')).toBe('NEGOTIATION');
+    expect(leadStatusAfterDealMoved('NEGOTIATION')).toBe('NEGOTIATION');
+  });
+
+  it('devolve o contato a Em contato quando o negócio recua', () => {
+    /*
+     * "Último evento vence": recuar é evento como qualquer outro, e um negócio
+     * de volta ao começo do funil descreve um contato em conversa, não em
+     * negociação. Deixar o selo em Em negociação faria a carteira contar uma
+     * história que o board já desmentiu.
+     */
+    expect(leadStatusAfterDealMoved('NEW')).toBe('CONTACT');
+    expect(leadStatusAfterDealMoved('CONTACT_MADE')).toBe('CONTACT');
+  });
+
+  it('concorda com a criação nos estágios em que o negócio nasce parado', () => {
+    // Criar um negócio em Novo e mover um negócio para Novo descrevem a mesma
+    // situação do contato — e por isso dizem o mesmo status.
+    expect(leadStatusAfterDealMoved('NEW')).toBe(LEAD_STATUS_AFTER_DEAL_CREATED);
+  });
+
+  it('tem resposta para todos os estágios abertos', () => {
+    // Um estágio novo no funil sem lugar nesta regra deixaria o selo do contato
+    // parado no que ele era antes, sem que nada acusasse.
+    for (const stage of OPEN_DEAL_STAGES) {
+      expect(leadStatusAfterDealMoved(stage)).not.toBeUndefined();
+    }
   });
 });

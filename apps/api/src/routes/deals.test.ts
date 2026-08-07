@@ -87,6 +87,19 @@ const leadNamed = async (name: string): Promise<LeadListItem> => {
   return lead;
 };
 
+/**
+ * Um negócio do funil, achado como o board o acha: pela busca. O identificador
+ * que a tela usa para mover um card é o que veio no card, e não um que ela
+ * conheça por outro caminho.
+ */
+const dealNamed = async (title: string): Promise<DealListItem> => {
+  const page = await list(`?search=${encodeURIComponent(title)}`);
+
+  const deal = page.data.at(0);
+  if (deal === undefined) throw new Error(`O negócio "${title}" não está no funil.`);
+  return deal;
+};
+
 describe('GET /deals/board', () => {
   describe('o funil', () => {
     it('recusa quem não está logado', async () => {
@@ -582,6 +595,214 @@ describe('POST /deals', () => {
       const body = await rejection({ expectedCloseDate: '20/09/2026' }, 400);
 
       expect(body.issues?.map((issue) => issue.path)).toContain('expectedCloseDate');
+    });
+  });
+});
+
+/*
+ * O contrato de `PATCH /deals/:id/stage`.
+ *
+ * O que esta rota tem de próprio é que **a regra que ela aplica não é dela**: a
+ * mesma função pura do pacote compartilhado (`refuseStageMove`) decide se a
+ * coluna do board aceita o drop e se a API aceita a requisição. Por isso os
+ * testes daqui não repetem a tabela de transições — ela já é exercitada direto
+ * em `pipeline.test.ts`, sem servidor. O que se prova aqui é o que só a rota
+ * faz: mover de verdade, ajustar os dois contadores, sincronizar o contato, e
+ * traduzir cada recusa no status HTTP que a tela sabe ler.
+ */
+describe('PATCH /deals/:id/stage', () => {
+  /** O negócio que este bloco move. Nasce em Novo, do contato Ana Beatriz. */
+  const DEAL_TITLE = 'Esteiras para a sala principal';
+  const LEAD_NAME = 'Ana Beatriz Souza';
+
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(DEAL_TITLE);
+  });
+
+  /** Move e decodifica a resposta com o mesmo Schema do card do board. */
+  const move = async (stage: DealStage, id: string = deal.id) => {
+    const response = await harness.patch(`/deals/${id}/stage`, { stage });
+
+    expect(response.statusCode).toBe(200);
+    return Schema.decodeUnknownSync(DealListItem)(response.json());
+  };
+
+  const rejection = async (
+    stage: string,
+    status: number,
+    id: string = deal.id,
+  ): Promise<{ error: string; message: string; issues?: { path: string }[] }> => {
+    const response = await harness.patch(`/deals/${id}/stage`, { stage });
+
+    expect(response.statusCode).toBe(status);
+    return response.json();
+  };
+
+  /** Onde o negócio está agora, segundo o funil — e não segundo a resposta. */
+  const stageOf = async (title: string): Promise<DealStage> =>
+    (await dealNamed(title)).stage;
+
+  describe('o movimento', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'PATCH',
+        url: `/deals/${deal.id}/stage`,
+        payload: { stage: 'CONTACT_MADE' },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('leva o negócio para o estágio pedido', async () => {
+      const moved = await move('PROPOSAL_SENT');
+
+      expect(moved.id).toBe(deal.id);
+      expect(moved.stage).toBe('PROPOSAL_SENT');
+      expect(await stageOf(DEAL_TITLE)).toBe('PROPOSAL_SENT');
+    });
+
+    it('deixa o negócio recuar, porque negociação real anda para trás', async () => {
+      await move('NEGOTIATION');
+      await move('CONTACT_MADE');
+
+      expect(await stageOf(DEAL_TITLE)).toBe('CONTACT_MADE');
+    });
+
+    it('devolve o card já com o Lead e o responsável resolvidos', async () => {
+      const moved = await move('CONTACT_MADE');
+
+      // O mesmo Schema da listagem: a resposta é o card como o board o desenha.
+      expect(moved.lead).toEqual(deal.lead);
+      expect(moved.owner).toEqual(deal.owner);
+      expect(moved.valueInCents).toBe(deal.valueInCents);
+    });
+
+    it('ajusta os contadores das duas colunas envolvidas', async () => {
+      const before = await board();
+      await move('NEGOTIATION');
+      const after = await board();
+
+      expect(columnOf(after, 'NEW').total).toBe(columnOf(before, 'NEW').total - 1);
+      expect(columnOf(after, 'NEGOTIATION').total).toBe(
+        columnOf(before, 'NEGOTIATION').total + 1,
+      );
+    });
+
+    it('não perde nem duplica negócio no funil inteiro', async () => {
+      await move('NEGOTIATION');
+      const after = await board();
+
+      expect(totalsOf(after).reduce((total, column) => total + column, 0)).toBe(
+        VISIBLE_DEAL_COUNT,
+      );
+      expect(columnOf(after, 'NEW').deals.map((card) => card.id)).not.toContain(deal.id);
+    });
+
+    it('registra o movimento como última interação, e o card sobe na coluna', async () => {
+      await move('CONTACT_MADE');
+
+      /*
+       * A coluna vem do mais recente para o mais antigo, então o negócio que
+       * acabou de se mexer é o primeiro card dela. É assim que a última
+       * interação é observável sem espiar a coluna do banco.
+       */
+      expect(columnOf(await board(), 'CONTACT_MADE').deals.at(0)?.id).toBe(deal.id);
+    });
+  });
+
+  describe('o status do Lead', () => {
+    it('leva o contato para Em negociação quando a proposta sai', async () => {
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEW');
+      await move('PROPOSAL_SENT');
+
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEGOTIATION');
+    });
+
+    it('devolve o contato a Em contato quando o negócio recua', async () => {
+      await move('NEGOTIATION');
+      await move('CONTACT_MADE');
+
+      // "Último evento vence": o recuo é evento como qualquer outro.
+      expect((await leadNamed(LEAD_NAME)).status).toBe('CONTACT');
+    });
+
+    it('registra o movimento como última interação do contato', async () => {
+      const before = (await leadNamed(LEAD_NAME)).lastInteractionAt.getTime();
+      await move('PROPOSAL_SENT');
+
+      expect((await leadNamed(LEAD_NAME)).lastInteractionAt.getTime()).toBeGreaterThan(
+        before,
+      );
+    });
+
+    it('não mexe no status de quem não teve negócio movido', async () => {
+      await move('PROPOSAL_SENT');
+
+      expect((await leadNamed('Carla Dias')).status).toBe('NEGOTIATION');
+    });
+  });
+
+  describe('a recusa', () => {
+    it('devolve 422 ao mover para Fechado, e não move nada', async () => {
+      const body = await rejection('CLOSED', 422);
+
+      /*
+       * Encerrar um negócio é decisão explícita — Ganho ou Perdido —, e não
+       * um card solto numa coluna (ADR-0003). O board nem chega a chamar a
+       * rota; a recusa existe para quem enviar por fora da tela.
+       */
+      expect(body.error).toBe('InvalidStageTransition');
+      expect(body.message).not.toBe('');
+      expect(await stageOf(DEAL_TITLE)).toBe('NEW');
+    });
+
+    it('devolve 409 ao mover um negócio já encerrado', async () => {
+      const closed = columnOf(await board(), 'CLOSED').deals.at(0);
+      const body = await rejection('NEGOTIATION', 409, closed?.id ?? '');
+
+      // Negócio fechado é terminal: o histórico do que foi encerrado não muda.
+      expect(body.error).toBe('DealAlreadyClosed');
+      expect(columnOf(await board(), 'CLOSED').deals.at(0)?.stage).toBe('CLOSED');
+    });
+
+    it('devolve 409 mesmo quando o destino também seria inválido', async () => {
+      const closed = columnOf(await board(), 'CLOSED').deals.at(0);
+
+      // Arrastar um negócio encerrado para a própria coluna Fechado casa com as
+      // duas recusas; a que responde é a que explica o que aconteceu.
+      expect((await rejection('CLOSED', 409, closed?.id ?? '')).error).toBe(
+        'DealAlreadyClosed',
+      );
+    });
+
+    it('devolve 404 quando o negócio não existe', async () => {
+      const body = await rejection('CONTACT_MADE', 404, randomUUID());
+
+      expect(body.error).toBe('DealNotFound');
+    });
+
+    it('devolve 404 quando o negócio foi removido', async () => {
+      const removed = harness.deals.find((record) => record.title === DELETED_DEAL_TITLE);
+      const body = await rejection('CONTACT_MADE', 404, removed?.id ?? '');
+
+      // Negócio removido não existe para quem lê — nem para quem move.
+      expect(body.error).toBe('DealNotFound');
+    });
+
+    it('recusa um estágio fora do vocabulário', async () => {
+      const body = await rejection('QUASE_FECHANDO', 400);
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('stage');
+    });
+
+    it('recusa um identificador de negócio que não é UUID', async () => {
+      const body = await rejection('CONTACT_MADE', 400, 'o-negocio-de-ontem');
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('id');
     });
   });
 });

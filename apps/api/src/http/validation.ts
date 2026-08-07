@@ -42,3 +42,18 @@ export const decodeQuery = <A, I>(
   query: unknown,
 ): Effect.Effect<A, ValidationFailed> =>
   decodeInput(schema, query, 'Confira os parâmetros da consulta.');
+
+/**
+ * Os parâmetros do caminho — o `:id` de `/deals/:id/stage`.
+ *
+ * Passam pelo mesmo caminho da query string, e não por um `as` calado, porque o
+ * `id` que chega na URL é texto vindo de fora: é o Schema que confere o formato
+ * de UUID e devolve o identificador **com marca**, que é o único jeito de
+ * produzir um `DealId` (ver `ids.ts`). Um identificador malformado vira 400 com
+ * o campo apontado, em vez de virar consulta ao banco.
+ */
+export const decodeParams = <A, I>(
+  schema: Schema.Schema<A, I>,
+  params: unknown,
+): Effect.Effect<A, ValidationFailed> =>
+  decodeInput(schema, params, 'Confira o endereço da requisição.');

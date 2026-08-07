@@ -10,6 +10,7 @@ import {
   SearchTerm,
   SortOrder,
 } from './pagination';
+import type { OpenDealStage } from './pipeline';
 import { OptionalText, RequiredText } from './text';
 import { Email, UserSummary } from './user';
 
@@ -173,3 +174,22 @@ export type CreateLeadInputEncoded = typeof CreateLeadInput.Encoded;
  * lista de Leads divergir visivelmente do board.
  */
 export const LEAD_STATUS_AFTER_DEAL_CREATED: LeadStatus = 'CONTACT';
+
+/**
+ * O status que o Lead assume quando um Deal dele muda de estágio.
+ *
+ * A regra do spec é "negócio em Proposta enviada ou Negociação leva o contato
+ * para Em negociação". O outro lado dela é consequência de **"último evento
+ * vence"**, e não uma regra a mais: um negócio que recua para o começo do funil
+ * descreve um contato em conversa, então o selo volta para Em contato — o mesmo
+ * status com que ele nasce ao ganhar um negócio.
+ *
+ * Só os quatro estágios abertos entram: encerrar um negócio é outra ação, com
+ * outro status (Ganho ou Perdido), e ela chega na fatia que fecha o negócio.
+ * `OpenDealStage` no parâmetro é o que faz o compilador cobrar isso de quem
+ * chamar — a rota só tem esse tipo em mãos depois da regra de transição.
+ */
+export const leadStatusAfterDealMoved = (stage: OpenDealStage): LeadStatus =>
+  stage === 'PROPOSAL_SENT' || stage === 'NEGOTIATION'
+    ? 'NEGOTIATION'
+    : LEAD_STATUS_AFTER_DEAL_CREATED;
