@@ -1,9 +1,9 @@
 import { Schema } from 'effect';
 import { Chosen } from './choice';
 import { OptionalDate } from './dates';
-import { DealStage } from './enums';
+import { DealResult, DealStage } from './enums';
 import { DealId, LeadId, UserId } from './ids';
-import { LeadSummary } from './lead';
+import { LeadDossier, LeadSummary } from './lead';
 import { ValueInCents } from './money';
 import {
   DEFAULT_PAGE_SIZE,
@@ -167,6 +167,56 @@ export const DealListQuery = Schema.Struct({
 
 export type DealListQuery = typeof DealListQuery.Type;
 export type DealListQueryEncoded = typeof DealListQuery.Encoded;
+
+/*
+ * ---------------------------------------------------------------------------
+ * O detalhamento
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O negócio inteiro — o que `GET /deals/:id` responde, e o que o painel lateral
+ * e o modal de detalhamento desenham.
+ *
+ * **Painel e modal leem o mesmo Schema, pela mesma consulta.** O painel usa uma
+ * parte pequena dele (título, valor, selo, Lead, responsável, última interação);
+ * o modal usa o resto. Fossem duas respostas diferentes, abrir o detalhamento a
+ * partir do painel custaria uma segunda ida ao servidor para buscar dados que a
+ * tela já tinha — e haveria dois caches a invalidar a cada comentário.
+ *
+ * É aqui que o `LeadSummary` do card dá lugar ao `LeadDossier`: o board mostra
+ * quem é o cliente, o detalhamento mostra como falar com ele.
+ *
+ * `result` e `closedAt` estão no Schema mesmo antes de existir a ação que os
+ * escreve: eles já existem no banco, a coluna Fechado do funil de exemplo já os
+ * tem preenchidos, e um negócio encerrado aberto no modal precisa dizer se foi
+ * ganho ou perdido. Quem os **escreve** é a fatia que encerra negócios.
+ *
+ * `deletedAt` não está aqui, como nos outros Schemas: remoção lógica é assunto
+ * do repositório.
+ */
+export const DealDetail = Schema.Struct({
+  id: DealId,
+  title: Schema.String,
+  /** Inteiro em centavos. Quem formata em reais é a tela. Ver `money.ts`. */
+  valueInCents: ValueInCents,
+  /** Onde o negócio está × se ele terminou e como. Ortogonais (ADR-0003). */
+  stage: DealStage,
+  result: DealResult,
+  /*
+   * Os três campos que o card não carrega. `NullOr` e não opcional: as colunas
+   * são nuláveis no banco, e "não informado" é uma resposta que a tela desenha.
+   */
+  description: Schema.NullOr(Schema.String),
+  expectedCloseDate: Schema.NullOr(Schema.DateFromString),
+  closedAt: Schema.NullOr(Schema.DateFromString),
+  lastInteractionAt: Schema.DateFromString,
+  lead: LeadDossier,
+  owner: UserSummary,
+});
+
+export type DealDetail = typeof DealDetail.Type;
+export type DealDetailEncoded = typeof DealDetail.Encoded;
 
 /*
  * ---------------------------------------------------------------------------

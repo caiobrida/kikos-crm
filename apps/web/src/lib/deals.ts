@@ -2,6 +2,7 @@ import {
   BOARD_COLUMN_PAGE_SIZE,
   CreateDealInput,
   DealBoard,
+  DealDetail,
   DealListItem,
   DealPage,
   MoveDealStageInput,
@@ -20,17 +21,26 @@ import { boardWithDealMoved, pageWithoutDeal } from './board';
 import { leadsQueryKey } from './leads';
 import { toQueryString } from './queryString';
 
-/** O prefixo de toda consulta de Deal — é por ele que as escritas as invalidam. */
-const dealsQueryKey = ['deals'] as const;
+/**
+ * O prefixo de toda consulta de Deal — é por ele que as escritas as invalidam.
+ *
+ * Exportado porque a linha do tempo vive debaixo dele (ver `comments.ts`): um
+ * comentário é acontecimento do negócio, e mover um card **acrescenta** um
+ * registro ao histórico. Pendurar as duas coisas no mesmo prefixo é o que faz
+ * cada escrita alcançar tudo que ela de fato mexeu, sem lista de chaves para
+ * alguém esquecer de atualizar.
+ */
+export const dealsQueryKey = ['deals'] as const;
 
 /*
- * Os dois prefixos de dentro do funil. Existem como constantes porque a
- * movimentação precisa alcançar os dois caches antes da resposta do servidor: o
+ * Os prefixos de dentro do funil. Os dois primeiros existem como constantes
+ * porque a movimentação precisa alcançá-los antes da resposta do servidor: o
  * board, onde o card muda de coluna, e as páginas do "carregar mais", de onde
- * ele some.
+ * ele some. O terceiro é o detalhamento, que a movimentação só invalida.
  */
 const boardQueryKey = [...dealsQueryKey, 'board'] as const;
 const columnQueryKey = [...dealsQueryKey, 'column'] as const;
+const detailQueryKey = [...dealsQueryKey, 'detail'] as const;
 
 /**
  * O recorte que o board está mostrando.
@@ -75,6 +85,27 @@ export const useBoard = (view: BoardView) =>
      * digitada na busca pisca cinco colunas vazias antes de preenchê-las.
      */
     placeholderData: keepPreviousData,
+  });
+
+/**
+ * Um negócio inteiro — **a consulta que o painel lateral e o modal
+ * compartilham**.
+ *
+ * É uma decisão de projeto disfarçada de detalhe de cache. O painel desenha a
+ * parte de cima do que volta e o modal desenha o resto; como a chave é a mesma,
+ * clicar em "ver detalhes" abre o modal com os dados já em mãos — sem
+ * carregamento, sem piscada — e há **um** cache a invalidar quando alguém
+ * comenta, em vez de dois que podem discordar.
+ *
+ * O `id` é obrigatório porque quem monta o painel e o modal só os monta com um
+ * negócio em mãos: sem card escolhido e sem `:dealId` na URL, nenhum dos dois
+ * chega a existir. Aceitar `undefined` aqui pediria um `enabled` para desligar
+ * uma consulta que ninguém faria.
+ */
+export const useDeal = (id: string) =>
+  useQuery({
+    queryKey: [...detailQueryKey, id] as const,
+    queryFn: ({ signal }) => apiJson(DealDetail, `/deals/${id}`, { signal }),
   });
 
 export interface ColumnPages {

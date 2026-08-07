@@ -66,6 +66,22 @@ export const LogoutIcon = (props: IconProps) => (
   </Icon>
 );
 
+/**
+ * A marca de um registro de sistema na linha do tempo.
+ *
+ * Onde um comentário tem o avatar de quem escreveu, o registro de sistema tem
+ * este ícone: é a distinção lida de relance, antes da cor e antes do texto. Duas
+ * setas em ciclo — algo aconteceu com o negócio, e não alguém disse algo.
+ */
+export const SystemRecordIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5" />
+    <path d="M20 4v4.5h-4.5" />
+    <path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5" />
+    <path d="M4 20v-4.5h4.5" />
+  </Icon>
+);
+
 export const GoogleIcon = (props: IconProps) => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4 shrink-0" {...props}>
     <path

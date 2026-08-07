@@ -22,15 +22,20 @@ import { Avatar } from '../ui/Avatar';
  *   time. Ele também é o que continuaria funcionando se o arrasto se mostrasse
  *   custoso.
  *
- * O card ainda não é clicável: o painel lateral e o detalhamento chegam na
- * fatia que os desenha. Quando chegarem, o card inteiro vira alvo de clique e o
- * seletor passa a ser um alvo dentro do outro — o clique nele precisará parar
- * de subir, ou a ação mudará de lugar para o painel.
+ * **O card também abre o painel lateral**, e isso se repete pelos mesmos dois
+ * canais: o card inteiro é alvo de clique, porque é o alvo grande que o mouse
+ * espera, e o título é um `<button>` de verdade, que é o que o teclado alcança.
+ * O card não vira um `role="button"` gigante justamente porque tem um `<select>`
+ * dentro — controle interativo aninhado em controle interativo confunde leitor
+ * de tela e quebra a navegação por Tab. Pelo mesmo motivo o clique no seletor
+ * para de subir: escolher um estágio é mover, não abrir.
  */
 export interface DealCardProps {
   readonly deal: DealListItem;
   /** Leva o negócio para outra coluna — a mesma ação do arrasto e do seletor. */
   readonly onMove: (deal: DealListItem, to: DealStage) => void;
+  /** Abre o resumo do negócio no painel lateral, sem sair do board. */
+  readonly onOpen: (deal: DealListItem) => void;
   readonly onDragStart: (deal: DealListItem) => void;
   readonly onDragEnd: () => void;
   /** O card que está sendo arrastado neste instante, se for este. */
@@ -40,6 +45,7 @@ export interface DealCardProps {
 export const DealCard = ({
   deal,
   onMove,
+  onOpen,
   onDragStart,
   onDragEnd,
   isDragging,
@@ -67,17 +73,30 @@ export const DealCard = ({
       draggable={!isClosed}
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
+      onClick={() => onOpen(deal)}
       className={cn(
-        'rounded-card bg-surface-800 p-3 ring-1 ring-surface-700',
+        'rounded-card bg-surface-800 p-3 ring-1 ring-surface-700 transition-colors',
+        'hover:ring-surface-500',
         // O cursor é a única pista de que o card se arrasta antes de alguém
         // tentar; na coluna Fechado ele não aparece, porque lá não se arrasta.
-        isClosed ? '' : 'cursor-grab active:cursor-grabbing',
+        isClosed ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
         // O original esmaece enquanto a cópia acompanha o ponteiro, para ficar
         // claro qual card está em movimento.
         isDragging ? 'opacity-40' : '',
       )}
     >
-      <h3 className="text-sm leading-snug font-medium text-ink">{deal.title}</h3>
+      <h3 className="text-sm leading-snug font-medium text-ink">
+        {/*
+          O título é o alvo de teclado do card. Ele não repete o clique do
+          `<article>`: o evento sobe até lá e é atendido uma vez só.
+        */}
+        <button
+          type="button"
+          className="rounded text-left hover:underline focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none"
+        >
+          {deal.title}
+        </button>
+      </h3>
 
       {/* O valor é o dado que faz o card ser lido de relance, e por isso vem na
           cor de ação. */}
@@ -96,7 +115,12 @@ export const DealCard = ({
       </div>
 
       {isClosed ? null : (
-        <div className="mt-3">
+        /*
+          O clique no seletor para aqui: ele é um alvo dentro do card, e escolher
+          um estágio é mover, não abrir. Sem isto, cada movimentação pelo teclado
+          abriria o painel junto.
+        */
+        <div className="mt-3" onClick={(event) => event.stopPropagation()}>
           <label htmlFor={`deal-stage-${deal.id}`} className="sr-only">
             Mover {deal.title} para outro estágio
           </label>

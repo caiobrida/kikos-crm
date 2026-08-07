@@ -1,8 +1,8 @@
 // O modelo de dados do Kikos CRM.
 //
 // `User` é a identidade única do sistema, tanto de quem faz login quanto de
-// quem recebe Leads e Deals (ADR-0001). `Lead` é o contato comercial, e `Deal`
-// é a oportunidade de venda sobre ele. Comment entra na fatia da linha do tempo.
+// quem recebe Leads e Deals (ADR-0001). `Lead` é o contato comercial, `Deal` é
+// a oportunidade de venda sobre ele, e `Comment` é a linha do tempo do Deal.
 
 generator client {
   provider = "prisma-client"
@@ -59,6 +59,14 @@ enum DealResult {
   LOST
 }
 
+/// A espécie de um Comment: escrito por uma pessoa ou gerado pelo sistema ao
+/// registrar uma ação. As duas convivem na mesma tabela — a linha do tempo é
+/// uma sequência só, e juntá-la na leitura custaria um merge por abertura.
+enum CommentKind {
+  USER
+  SYSTEM
+}
+
 /// Por qual canal o Lead chegou ao time.
 enum LeadSource {
   WEBSITE
@@ -82,8 +90,11 @@ model User {
   /// (ADR-0004).
   tokenVersion Int @default(0)
 
-  leads Lead[]
-  deals Deal[]
+  leads    Lead[]
+  deals    Deal[]
+  /// Os registros que esta pessoa assina na linha do tempo — inclusive os de
+  /// sistema, que também têm autor.
+  comments Comment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,6 +196,10 @@ model Deal {
   /// de estágio ou fechamento. Escrito pelas ações do domínio.
   lastInteractionAt DateTime @default(now())
 
+  /// A linha do tempo do negócio. Sem `onDelete`: a remoção de Deal é lógica, e
+  /// o histórico continua apontando para a linha.
+  comments Comment[]
+
   /// Remoção lógica, como no Lead. O filtro que a respeita mora na camada de
   /// repositório, nunca nas rotas.
   deletedAt DateTime?
@@ -199,4 +214,34 @@ model Deal {
   @@index([deletedAt, ownerId])
   @@index([deletedAt, leadId])
   @@map("deals")
+}
+
+/// Um registro no histórico de um Deal, sempre atribuído a um User.
+model Comment {
+  id   String      @id @default(uuid()) @db.Uuid
+  body String
+  kind CommentKind
+
+  /// **Obrigatório, e essa é a decisão.** Uma FK não-nulável em vez de chaves
+  /// nuláveis ou de um par tipo/id: o banco garante a integridade, e nenhuma
+  /// leitura precisa desambiguar a quem o registro pertence. Lead não recebe
+  /// comentários — tem campo de observações (ver CONTEXT.md).
+  dealId String @db.Uuid
+  deal   Deal   @relation(fields: [dealId], references: [id])
+
+  /// Quem assina o registro. Vale para as duas espécies: o de sistema é
+  /// atribuído a quem executou a ação que o gerou.
+  authorId String @db.Uuid
+  author   User   @relation(fields: [authorId], references: [id])
+
+  /// **Não há `updatedAt` nem `deletedAt`, de propósito.** A linha do tempo é
+  /// registro histórico: comentário não se edita nem se remove, e um registro
+  /// de sistema muito menos. Uma coluna que não existe não tem como ser escrita
+  /// por uma rota distraída.
+  createdAt DateTime @default(now())
+
+  /// O único recorte que existe: a linha do tempo de um negócio, do mais
+  /// recente para o mais antigo.
+  @@index([dealId, createdAt])
+  @@map("comments")
 }

@@ -1,7 +1,10 @@
 import {
+  CommentId,
   DealId,
   LeadId,
   UserId,
+  stageMoveRecord,
+  type CommentKind,
   type DealResult,
   type DealStage,
   type LeadStatus,
@@ -11,6 +14,7 @@ import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { hashPassword } from '../auth/password';
 import { ACCESS_COOKIE } from '../http/cookies';
+import type { CommentRecord } from '../repositories/CommentRepository';
 import type { DealRecord } from '../repositories/DealRepository';
 import { InMemoryRepositories } from '../repositories/inMemory';
 import type { LeadRecord } from '../repositories/LeadRepository';
@@ -37,6 +41,7 @@ export const TEST_PASSWORD = 'kikos123';
 const newUserId = (): UserId => Schema.decodeSync(UserId)(randomUUID());
 const newLeadId = (): LeadId => Schema.decodeSync(LeadId)(randomUUID());
 const newDealId = (): DealId => Schema.decodeSync(DealId)(randomUUID());
+const newCommentId = (): CommentId => Schema.decodeSync(CommentId)(randomUUID());
 
 /*
  * A carteira de contatos dos testes.
@@ -57,6 +62,8 @@ interface LeadFixture {
   readonly email: string;
   readonly status: LeadStatus;
   readonly owner: 'manager' | 'seller';
+  /** Opcional no cadastro, e por isso preenchido em um só: o dossiê desenha os dois casos. */
+  readonly jobTitle?: string;
   readonly lastInteractionAt: string;
   readonly deleted?: true;
 }
@@ -68,6 +75,7 @@ const LEAD_FIXTURES: readonly LeadFixture[] = [
     email: 'ana.souza@corpolivre.com.br',
     status: 'NEW',
     owner: 'seller',
+    jobTitle: 'Gerente de Operações',
     lastInteractionAt: '2026-05-08T12:00:00.000Z',
   },
   {
@@ -144,7 +152,7 @@ const makeLeads = (manager: UserRecord, seller: UserRecord): readonly LeadRecord
     company: fixture.company,
     email: fixture.email,
     phone: `+55 11 9${String(index).padStart(4, '0')}-1000`,
-    jobTitle: null,
+    jobTitle: fixture.jobTitle ?? null,
     source: 'WEBSITE',
     status: fixture.status,
     ownerId: fixture.owner === 'manager' ? manager.id : seller.id,
@@ -368,6 +376,87 @@ const makeDeals = (
     };
   });
 
+/*
+ * ---------------------------------------------------------------------------
+ * A linha do tempo dos testes
+ * ---------------------------------------------------------------------------
+ *
+ * Poucos registros, e cada um com um motivo:
+ *
+ * - **dois num mesmo negócio**, com datas distintas, para que "vem do mais
+ *   recente para o mais antigo" seja verificável e para que um comentário novo
+ *   tenha de fato de passar na frente de alguém;
+ * - **um de cada espécie**, para que a leitura prove que as duas convivem na
+ *   mesma sequência;
+ * - **um negócio com a linha do tempo vazia** — a maioria deles —, que é o caso
+ *   de quem abre um negócio recém-cadastrado.
+ */
+interface CommentFixture {
+  /** O título do Deal, que precisa existir em `DEAL_FIXTURES`. */
+  readonly deal: string;
+  readonly kind: CommentKind;
+  readonly body: string;
+  readonly author: 'manager' | 'seller';
+  readonly createdAt: string;
+}
+
+const COMMENT_FIXTURES: readonly CommentFixture[] = [
+  {
+    deal: 'Esteiras para a sala principal',
+    kind: 'USER',
+    body: 'Cliente pediu a proposta com instalação inclusa.',
+    author: 'seller',
+    createdAt: '2026-05-19T15:30:00.000Z',
+  },
+  {
+    deal: 'Esteiras para a sala principal',
+    kind: 'SYSTEM',
+    /* Pela mesma função que a rota de movimentação usa, e não escrito à mão: a
+       fixture não pode ser o lugar onde a frase do registro de sistema começa a
+       divergir do que o produto grava. */
+    body: stageMoveRecord('CONTACT_MADE', 'NEW'),
+    author: 'manager',
+    createdAt: '2026-05-20T09:00:00.000Z',
+  },
+  {
+    deal: 'Renovação do parque de máquinas',
+    kind: 'USER',
+    body: 'Reunião com o financeiro marcada para terça.',
+    author: 'manager',
+    createdAt: '2026-05-07T11:00:00.000Z',
+  },
+];
+
+/** O negócio que já nasce com linha do tempo — o dos testes de leitura. */
+export const COMMENTED_DEAL_TITLE = 'Esteiras para a sala principal';
+
+/** Quantos registros um negócio tem antes de qualquer teste escrever. */
+export const commentsOnDeal = (title: string): number =>
+  COMMENT_FIXTURES.filter((fixture) => fixture.deal === title).length;
+
+const makeComments = (
+  deals: readonly DealRecord[],
+  manager: UserRecord,
+  seller: UserRecord,
+): readonly CommentRecord[] =>
+  COMMENT_FIXTURES.map((fixture) => {
+    const deal = deals.find((candidate) => candidate.title === fixture.deal);
+    if (deal === undefined) {
+      throw new Error(
+        `O registro "${fixture.body}" aponta para um negócio fora da fixture.`,
+      );
+    }
+
+    return {
+      id: newCommentId(),
+      body: fixture.body,
+      kind: fixture.kind,
+      dealId: deal.id,
+      authorId: fixture.author === 'manager' ? manager.id : seller.id,
+      createdAt: new Date(fixture.createdAt),
+    };
+  });
+
 export interface TestHarness {
   readonly app: FastifyInstance;
   readonly manager: UserRecord;
@@ -423,10 +512,11 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
   const users = [manager, seller];
   const leads = makeLeads(manager, seller);
   const deals = makeDeals(leads, manager, seller);
+  const comments = makeComments(deals, manager, seller);
 
-  // Os três repositórios sobre um estado só, como as três tabelas do mesmo
+  // Os quatro repositórios sobre um estado só, como as quatro tabelas do mesmo
   // Postgres — o que permite criar um Lead e vincular um Deal a ele em seguida.
-  const runtime = makeRuntime(InMemoryRepositories({ users, leads, deals }));
+  const runtime = makeRuntime(InMemoryRepositories({ users, leads, deals, comments }));
 
   const app = buildServer({ runtime, logger: false });
   await app.ready();

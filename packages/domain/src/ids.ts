@@ -23,3 +23,7 @@ export type LeadId = typeof LeadId.Type;
 /** O identificador de um Deal. */
 export const DealId = Schema.UUID.pipe(Schema.brand('DealId'));
 export type DealId = typeof DealId.Type;
+
+/** O identificador de um Comment — um registro da linha do tempo de um Deal. */
+export const CommentId = Schema.UUID.pipe(Schema.brand('CommentId'));
+export type CommentId = typeof CommentId.Type;

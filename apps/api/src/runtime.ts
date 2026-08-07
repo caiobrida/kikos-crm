@@ -1,4 +1,6 @@
 import { Layer, ManagedRuntime } from 'effect';
+import { CommentRepository } from './repositories/CommentRepository';
+import { CommentRepositoryPrisma } from './repositories/CommentRepositoryPrisma';
 import { DealRepository } from './repositories/DealRepository';
 import { DealRepositoryPrisma } from './repositories/DealRepositoryPrisma';
 import { LeadRepository } from './repositories/LeadRepository';
@@ -6,17 +8,16 @@ import { LeadRepositoryPrisma } from './repositories/LeadRepositoryPrisma';
 import { UserRepository } from './repositories/UserRepository';
 import { UserRepositoryPrisma } from './repositories/UserRepositoryPrisma';
 
-/**
- * Tudo que um programa desta API pode pedir. Cresce uma linha por fatia,
- * conforme o repositório de Comment entra.
- */
-export type AppServices = UserRepository | LeadRepository | DealRepository;
+/** Tudo que um programa desta API pode pedir. */
+export type AppServices =
+  UserRepository | LeadRepository | DealRepository | CommentRepository;
 
 /** A composição de produção: os repositórios sobre Prisma. */
 export const AppLayerLive: Layer.Layer<AppServices> = Layer.mergeAll(
   UserRepositoryPrisma,
   LeadRepositoryPrisma,
   DealRepositoryPrisma,
+  CommentRepositoryPrisma,
 );
 
 /**

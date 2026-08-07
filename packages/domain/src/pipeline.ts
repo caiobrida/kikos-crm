@@ -109,3 +109,25 @@ export const STAGE_MOVE_REFUSALS: Record<StageMoveRefusal, string> = {
     'Fechado não é destino de arrasto. Para encerrar, marque o negócio como ' +
     'ganho ou perdido.',
 };
+
+/**
+ * O nome de cada estágio em português.
+ *
+ * Ele **morava no app web**, junto dos outros rótulos de enum, e desceu para cá
+ * no instante em que deixou de ser só interface: o registro de sistema que uma
+ * movimentação deixa na linha do tempo grava a frase pronta no banco, e é o
+ * servidor quem a escreve. Duplicar o mapa deixaria o cabeçalho de uma coluna e
+ * o histórico do negócio chamando o mesmo estágio por dois nomes.
+ *
+ * O `Record<DealStage, string>` continua sendo a trava de sempre: um estágio
+ * novo no vocabulário sem rótulo aqui quebra o typecheck, em vez de virar uma
+ * coluna sem nome na tela. Ver `labels.ts` no app web para o resto do
+ * vocabulário de interface, que continua lá.
+ */
+export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
+  NEW: 'Novo',
+  CONTACT_MADE: 'Contato feito',
+  PROPOSAL_SENT: 'Proposta enviada',
+  NEGOTIATION: 'Negociação',
+  CLOSED: 'Fechado',
+};

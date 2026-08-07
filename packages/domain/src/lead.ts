@@ -32,6 +32,33 @@ export const LeadSummary = Schema.Struct({
 export type LeadSummary = typeof LeadSummary.Type;
 
 /**
+ * O Lead como o detalhamento de um Deal o mostra — **o dossiê do cliente**.
+ *
+ * A pergunta que ele responde é uma só, e concreta: quem eu ligo agora, e para
+ * qual número? Por isso ele carrega telefone e e-mail, que o `LeadSummary` do
+ * card deliberadamente não carrega — num board de cinco colunas seriam dados que
+ * ninguém lê repetidos em cada card; aqui são o motivo de a seção existir.
+ *
+ * `jobTitle` é `NullOr` e não opcional: a coluna do banco é nulável, e a tela
+ * precisa distinguir "não informado" de "não veio na resposta". `status` fica de
+ * fora de propósito — o modal já mostra o Stage do negócio, e pôr os dois selos
+ * lado a lado convidaria justamente a confusão entre Stage e Status que o
+ * vocabulário separa (ver CONTEXT.md).
+ */
+export const LeadDossier = Schema.Struct({
+  id: LeadId,
+  name: Schema.String,
+  company: Schema.String,
+  email: Email,
+  phone: Schema.String,
+  jobTitle: Schema.NullOr(Schema.String),
+  /** O responsável **pelo contato**, que pode não ser o do negócio. */
+  owner: UserSummary,
+});
+
+export type LeadDossier = typeof LeadDossier.Type;
+
+/**
  * Um Lead como uma linha da lista o mostra.
  *
  * São exatamente as sete colunas da tabela, e nada além delas. `jobTitle` e

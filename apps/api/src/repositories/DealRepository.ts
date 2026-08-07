@@ -7,6 +7,7 @@ import {
   type DealResult,
   type DealSortBy,
   type DealStage,
+  type LeadDossier,
   type LeadId,
   type LeadSummary,
   type SortOrder,
@@ -60,6 +61,33 @@ export interface DealWithRelations {
   readonly valueInCents: number;
   readonly stage: DealStage;
   readonly lead: LeadSummary;
+  readonly owner: UserSummary;
+}
+
+/**
+ * Um Deal com o **dossiê do cliente** resolvido — o que o painel lateral e o
+ * modal de detalhamento desenham.
+ *
+ * A diferença para o card não é de tamanho, é de pergunta: o card responde "que
+ * oportunidade é esta?", e por isso leva do Lead apenas nome e empresa; o
+ * detalhamento responde "como eu falo com este cliente?", e por isso leva
+ * telefone, e-mail e cargo. Um `JOIN` mais largo numa consulta que devolve uma
+ * linha só, em vez de um `JOIN` largo em cada card de cinco colunas.
+ *
+ * O formato bate com o Schema `DealDetail` do pacote compartilhado, e é o
+ * compilador quem cobra que continue batendo.
+ */
+export interface DealWithDossier {
+  readonly id: DealId;
+  readonly title: string;
+  readonly valueInCents: number;
+  readonly stage: DealStage;
+  readonly result: DealResult;
+  readonly description: string | null;
+  readonly expectedCloseDate: Date | null;
+  readonly closedAt: Date | null;
+  readonly lastInteractionAt: Date;
+  readonly lead: LeadDossier;
   readonly owner: UserSummary;
 }
 
@@ -139,12 +167,32 @@ export class DealRepository extends Context.Tag('DealRepository')<
      */
     readonly findById: (id: DealId) => Effect.Effect<Option.Option<DealRecord>>;
     /**
+     * O negócio com o dossiê do cliente, ou `Option.none()` — o que uma leitura
+     * do painel e do modal pede.
+     *
+     * Separado do `findById` de propósito: aquele responde "esse card ainda está
+     * aí, e em que coluna?" para quem vai **escrever**, e por isso devolve a
+     * linha crua, sem `JOIN` nenhum. Este responde à tela, e paga dois `JOIN`
+     * para isso.
+     */
+    readonly detailById: (id: DealId) => Effect.Effect<Option.Option<DealWithDossier>>;
+    /**
      * Grava o negócio e devolve o card como o board o desenha — com o Lead e o
      * responsável já resolvidos, que é o que a rota responde no 201. O mesmo
      * formato da listagem, pelo mesmo motivo do Lead: um Schema só descrevendo
      * "um Deal como o CRM o mostra".
      */
     readonly create: (deal: NewDeal) => Effect.Effect<DealWithRelations>;
+    /**
+     * Avança a última interação do negócio, sem mexer em mais nada.
+     *
+     * É o par do `recordLeadInteraction` do outro repositório, e existe pelo
+     * mesmo motivo: comentar é acontecimento, e todo acontecimento faz o card
+     * subir para o topo da coluna (ver o verbete "Última Interação" em
+     * CONTEXT.md). Movimentação não passa por aqui — ela grava a data junto do
+     * estágio, numa escrita só.
+     */
+    readonly recordDealInteraction: (id: DealId, at: Date) => Effect.Effect<void>;
     /**
      * Move o negócio de coluna e devolve o card no mesmo formato da listagem.
      *
@@ -240,6 +288,37 @@ export const DealRepositoryInMemory = (
       const owners = new Map<UserId, UserSummary>(
         users.map((user) => [user.id, { id: user.id, name: user.name }]),
       );
+
+      /**
+       * O responsável de identificador `id`.
+       *
+       * Um responsável ausente é **defeito, não erro de domínio**: no banco a
+       * chave estrangeira garante que isto não acontece, e num teste significa
+       * fixture quebrada. `subject` entra na mensagem porque quem lê o estouro
+       * precisa saber qual registro apontava para o vazio.
+       */
+      const ownerOf = (id: UserId, subject: string): UserSummary => {
+        const owner = owners.get(id);
+
+        if (owner === undefined) {
+          throw new Error(
+            `${subject} aponta para um responsável ausente da Layer em memória.`,
+          );
+        }
+
+        return owner;
+      };
+
+      /** O dossiê de um contato: a linha do Lead mais o responsável dele. */
+      const dossierOf = (lead: LeadRecord): LeadDossier => ({
+        id: lead.id,
+        name: lead.name,
+        company: lead.company,
+        email: lead.email,
+        phone: lead.phone,
+        jobTitle: lead.jobTitle,
+        owner: ownerOf(lead.ownerId, `O Lead ${lead.id}`),
+      });
 
       const resolve = (
         deal: DealRecord,
@@ -391,6 +470,51 @@ export const DealRepositoryInMemory = (
           // O filtro de remoção lógica vale aqui como em toda leitura.
           Ref.get(store).pipe(
             Effect.map((deals) => Option.fromNullable(deals.find(isVisible(id)))),
+          ),
+
+        detailById: (id) =>
+          Effect.gen(function* () {
+            const deals = yield* Ref.get(store);
+            const deal = deals.find(isVisible(id));
+            if (deal === undefined) return Option.none();
+
+            const leads = yield* Ref.get(leadStore);
+            /*
+             * O contato é resolvido **sem** o filtro de remoção lógica, e é de
+             * propósito: quem foi removido continua sendo o cliente do negócio,
+             * e um dossiê em branco esconderia de quem abriu o detalhamento
+             * justamente a informação de que o contato saiu da carteira. É o
+             * mesmo que o `JOIN` do Prisma faz, que também não filtra a relação.
+             */
+            const lead = leads.find((candidate) => candidate.id === deal.leadId);
+
+            if (lead === undefined) {
+              // Defeito, não erro de domínio: no banco a chave estrangeira
+              // garante que isto não acontece.
+              throw new Error(
+                `O negócio ${deal.id} aponta para um Lead ausente da Layer em memória.`,
+              );
+            }
+
+            const {
+              leadId: _leadId,
+              ownerId: _ownerId,
+              deletedAt: _deletedAt,
+              ...rest
+            } = deal;
+
+            return Option.some({
+              ...rest,
+              lead: dossierOf(lead),
+              owner: ownerOf(deal.ownerId, `O negócio ${deal.id}`),
+            });
+          }),
+
+        recordDealInteraction: (id, at) =>
+          Ref.update(store, (deals) =>
+            deals.map((deal) =>
+              isVisible(id)(deal) ? { ...deal, lastInteractionAt: at } : deal,
+            ),
           ),
 
         moveToStage: (id, move) =>

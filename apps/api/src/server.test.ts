@@ -8,7 +8,9 @@ import { buildServer } from './server';
 /** `/health` não consulta nada, mas o servidor exige um runtime para montar. */
 const buildHealthServer = () =>
   buildServer({
-    runtime: makeRuntime(InMemoryRepositories({ users: [], leads: [], deals: [] })),
+    runtime: makeRuntime(
+      InMemoryRepositories({ users: [], leads: [], deals: [], comments: [] }),
+    ),
     logger: false,
   });
 
