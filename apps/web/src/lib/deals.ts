@@ -7,6 +7,7 @@ import {
   DealListItem,
   DealPage,
   MoveDealStageInput,
+  UpdateDealInput,
   type DealStage,
 } from '@kikos/domain';
 import {
@@ -17,21 +18,10 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { Schema } from 'effect';
-import { apiJson } from './api';
+import { apiJson, apiSend } from './api';
 import { boardWithDealMoved, pageWithoutDeal } from './board';
-import { leadsQueryKey } from './leads';
+import { dealsQueryKey, leadsQueryKey } from './queryKeys';
 import { toQueryString } from './queryString';
-
-/**
- * O prefixo de toda consulta de Deal — é por ele que as escritas as invalidam.
- *
- * Exportado porque a linha do tempo vive debaixo dele (ver `comments.ts`): um
- * comentário é acontecimento do negócio, e mover um card **acrescenta** um
- * registro ao histórico. Pendurar as duas coisas no mesmo prefixo é o que faz
- * cada escrita alcançar tudo que ela de fato mexeu, sem lista de chaves para
- * alguém esquecer de atualizar.
- */
-export const dealsQueryKey = ['deals'] as const;
 
 /*
  * Os prefixos de dentro do funil. Os dois primeiros existem como constantes
@@ -313,6 +303,62 @@ export const useCloseDeal = (id: string) => {
         // O mesmo Schema que a rota usa para ler o corpo, no caminho de volta.
         body: Schema.encodeSync(CloseDealInput)(input),
       }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
+      ]),
+  });
+};
+
+/**
+ * Corrige o cadastro de um negócio.
+ *
+ * `Schema.encodeSync` é o caminho de volta do mesmo Schema que validou o
+ * formulário — o do cadastro menos o estágio (ver `UpdateDealInput`), porque
+ * mover é outra ação.
+ *
+ * **Só o funil é invalidado, e a carteira não.** É a única escrita do CRM de que
+ * isso vale: editar um negócio não avança a última interação nem mexe no selo do
+ * contato — corrigir o valor de uma proposta não é acontecimento com o cliente.
+ * Derrubar a lista de Leads aqui seria recarregar uma tela que não mudou.
+ *
+ * O prefixo de Deal alcança de uma vez o board, as páginas do "carregar mais" e o
+ * detalhamento, que é o que a tela está mostrando quando alguém salva.
+ */
+export const useUpdateDeal = (id: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateDealInput) =>
+      apiJson(DealListItem, `/deals/${id}`, {
+        method: 'PUT',
+        body: Schema.encodeSync(UpdateDealInput)(input),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
+  });
+};
+
+/**
+ * Remove um negócio.
+ *
+ * `apiSend` e não `apiJson`: a rota responde 204 sem corpo — não há recurso a
+ * devolver, porque ele deixou de existir para quem lê.
+ *
+ * A carteira **entra** na invalidação aqui, ao contrário da edição, e por um
+ * motivo estreito: a lista de Leads não muda, mas a contagem que trava a remoção
+ * de um contato muda — o negócio que saiu do funil era um dos que a seguravam. É
+ * barato manter as duas telas contando a mesma história.
+ *
+ * Sem escrita otimista, como as outras: remover acontece depois de uma
+ * confirmação, e um card que sumisse antes da resposta teria de voltar sozinho no
+ * caso em que o servidor recusa.
+ */
+export const useDeleteDeal = (id: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => apiSend(`/deals/${id}`, { method: 'DELETE' }),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: dealsQueryKey }),

@@ -5,6 +5,8 @@ import { toValidationIssues } from './errors';
 import {
   CreateLeadInput,
   LEAD_STATUS_AFTER_DEAL_CREATED,
+  UpdateLeadInput,
+  leadHasOpenDealsMessage,
   leadStatusAfterDealClosed,
   leadStatusAfterDealMoved,
 } from './lead';
@@ -169,6 +171,82 @@ describe('CreateLeadInput', () => {
       // erro a cada tentativa de salvar.
       expect([...issues.keys()].sort()).toEqual(['company', 'email', 'name']);
     });
+  });
+});
+
+/*
+ * A carga de `PUT /leads/:id` — e, campo por campo, o mesmo formulário.
+ *
+ * O que estes testes fixam é a decisão: **editar um contato é preencher o
+ * cadastro de novo**, com os valores que já estavam lá. Não há um segundo
+ * vocabulário de "campos editáveis" que possa divergir do primeiro.
+ */
+describe('UpdateLeadInput', () => {
+  const edit = Schema.decodeUnknownEither(UpdateLeadInput, { errors: 'all' });
+
+  it('aceita a carga inteira do cadastro', () => {
+    const lead = Either.getOrThrow(
+      edit({ ...FILLED_FORM, jobTitle: 'Gerente de Operações', notes: 'Ligar terça.' }),
+    );
+
+    expect(lead.name).toBe('Juliana Prado');
+    expect(lead.jobTitle).toBe('Gerente de Operações');
+    expect(lead.notes).toBe('Ligar terça.');
+  });
+
+  it('cobra os mesmos campos obrigatórios que o cadastro cobra', () => {
+    // Um contato não fica sem nome por ter sido salvo pela tela de edição: a
+    // regra é a mesma, e é isso que "um Schema só" quer dizer.
+    expect(Either.isLeft(edit({ ...FILLED_FORM, name: '   ' }))).toBe(true);
+    expect(Either.isLeft(edit({ ...FILLED_FORM, email: 'juliana.prado' }))).toBe(true);
+    expect(Either.isLeft(edit({ ...FILLED_FORM, ownerId: '' }))).toBe(true);
+  });
+
+  it('não deixa a edição escolher o status nem a última interação', () => {
+    const lead = Either.getOrThrow(
+      edit({
+        ...FILLED_FORM,
+        status: 'WON',
+        lastInteractionAt: '2020-01-01T00:00:00.000Z',
+      }),
+    );
+
+    /*
+     * Os dois continuam sendo decididos pelo domínio, como na criação: o selo do
+     * contato é sincronizado pelas ações de Deal, e corrigir um telefone não é
+     * interação com o cliente. Um campo que não existe no Schema não tem como ser
+     * escolhido pelo corpo da requisição.
+     */
+    expect(lead).not.toHaveProperty('status');
+    expect(lead).not.toHaveProperty('lastInteractionAt');
+  });
+
+  it('volta à forma do formulário, que é como a tela abre a edição', () => {
+    // O caminho de verdade da tela de edição: o contato que veio do servidor é
+    // *codificado* para preencher os campos, e decodificado de volta ao salvar.
+    const wire = Schema.encodeSync(UpdateLeadInput)(Either.getOrThrow(edit(FILLED_FORM)));
+
+    expect(wire).toEqual(FILLED_FORM);
+  });
+});
+
+/*
+ * A frase que explica por que um contato não pôde ser removido.
+ *
+ * Ela mora no domínio, e não na rota, pelo mesmo motivo que as recusas do funil
+ * moram: é o servidor quem conta os negócios, e é a tela quem mostra o número.
+ * Uma frase só, escrita num lugar só.
+ */
+describe('leadHasOpenDealsMessage', () => {
+  it('diz quantos negócios travam a remoção', () => {
+    // "quantos Deals em aberto estão travando" é requisito do spec: sem o
+    // número, quem lê não sabe se falta fechar um negócio ou uma dúzia.
+    expect(leadHasOpenDealsMessage(3)).toContain('3');
+  });
+
+  it('concorda em número com o que contou', () => {
+    expect(leadHasOpenDealsMessage(1)).toContain('1 negócio em aberto');
+    expect(leadHasOpenDealsMessage(2)).toContain('2 negócios em aberto');
   });
 });
 

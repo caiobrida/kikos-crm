@@ -340,6 +340,24 @@ export const dealsInStage = (stage: DealStage): number =>
 export const dealsOwnedBy = (owner: 'manager' | 'seller'): number =>
   visibleDeals.filter((fixture) => fixture.owner === owner).length;
 
+/**
+ * Quantos negócios **em aberto** o contato tem — o número que trava a remoção
+ * dele, e que a recusa mostra a quem tentou.
+ *
+ * Derivado da fixture, e não escrito à mão em cada teste: acrescentar um negócio
+ * à carteira de exemplo não deixa uma asserção de contagem para trás.
+ */
+export const openDealsOfLead = (lead: string): number =>
+  visibleDeals.filter(
+    (fixture) => fixture.lead === lead && (fixture.result ?? 'OPEN') === 'OPEN',
+  ).length;
+
+/** O contato com **um** negócio em aberto só: o caso do singular na recusa. */
+export const LEAD_WITH_ONE_OPEN_DEAL = 'Fabio Gomes';
+
+/** O negócio em aberto desse contato — o que precisa sair antes de removê-lo. */
+export const OPEN_DEAL_OF_THAT_LEAD = 'Reposição de anilhas';
+
 /** A coluna com mais negócios que uma página: a que exercita o "carregar mais". */
 export const CROWDED_STAGE: DealStage = 'CONTACT_MADE';
 
@@ -483,6 +501,13 @@ export interface TestHarness {
     url: string,
     payload: Record<string, unknown>,
   ) => Promise<LightMyRequestResponse>;
+  /** A edição: a carga completa de um registro que já existe. */
+  readonly put: (
+    url: string,
+    payload: Record<string, unknown>,
+  ) => Promise<LightMyRequestResponse>;
+  /** A remoção, que é lógica — sem corpo de ida nem de volta. */
+  readonly del: (url: string) => Promise<LightMyRequestResponse>;
   readonly close: () => Promise<void>;
 }
 
@@ -539,6 +564,8 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
     get: (url) => app.inject({ method: 'GET', url, cookies }),
     post: (url, payload) => app.inject({ method: 'POST', url, cookies, payload }),
     patch: (url, payload) => app.inject({ method: 'PATCH', url, cookies, payload }),
+    put: (url, payload) => app.inject({ method: 'PUT', url, cookies, payload }),
+    del: (url) => app.inject({ method: 'DELETE', url, cookies }),
     close: async () => {
       await app.close();
       // Descarta as Layers, como o `main.ts` faz no shutdown.

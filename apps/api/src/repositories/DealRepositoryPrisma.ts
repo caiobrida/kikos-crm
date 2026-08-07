@@ -310,6 +310,44 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
           return toDealWithRelations(row);
         }),
 
+      update: (id, changes) =>
+        Effect.promise(async () => {
+          // A cláusula de remoção entra no `where` do próprio `update`, como na
+          // movimentação e no encerramento.
+          const row = await prisma.deal.update({
+            where: { id, deletedAt: null },
+            data: changes,
+            // O mesmo `select` da listagem: a linha volta pronta para o card.
+            select: LIST_SELECT,
+          });
+
+          return toDealWithRelations(row);
+        }),
+
+      softDelete: (id, at) =>
+        Effect.promise(async () => {
+          /*
+           * `updateMany`, e não `delete`: a remoção é lógica. A linha continua
+           * no banco — a linha do tempo aponta para ela, e comentário não se
+           * apaga —, e o que muda é que toda leitura desta camada deixa de
+           * enxergá-la.
+           *
+           * O `where` com `deletedAt: null` também torna a operação idempotente:
+           * remover duas vezes não sobrescreve a data da primeira.
+           */
+          await prisma.deal.updateMany({
+            where: { id, deletedAt: null },
+            data: { deletedAt: at },
+          });
+        }),
+
+      countOpenByLead: (leadId) =>
+        Effect.promise(async () =>
+          // O filtro de remoção lógica vale aqui como em toda leitura: um
+          // negócio já removido não trava a remoção do contato.
+          prisma.deal.count({ where: { leadId, deletedAt: null, result: 'OPEN' } }),
+        ),
+
       list: (query) =>
         Effect.promise(async () => {
           /*

@@ -3,6 +3,7 @@ import {
   DealListItem,
   DealPage,
   DealTimeline,
+  LeadDetail,
   LeadListItem,
   LeadPage,
 } from '@kikos/domain';
@@ -35,6 +36,17 @@ export const leadNamed = async (
   const lead = Schema.decodeUnknownSync(LeadPage)(response.json()).data.at(0);
   if (lead === undefined) throw new Error(`O contato "${name}" não está na carteira.`);
   return lead;
+};
+
+/** O contato inteiro, como o modal do Lead o lê. */
+export const leadDetail = async (
+  harness: TestHarness,
+  id: string,
+): Promise<LeadDetail> => {
+  const response = await harness.get(`/leads/${id}`);
+  expect(response.statusCode).toBe(200);
+
+  return Schema.decodeUnknownSync(LeadDetail)(response.json());
 };
 
 /** Um negócio do funil, achado como o board o acha: pela busca. */

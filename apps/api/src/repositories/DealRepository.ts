@@ -106,6 +106,27 @@ export interface DealWithDossier {
 export type NewDeal = Omit<DealRecord, 'id' | 'deletedAt'>;
 
 /**
+ * O que a edição escreve num negócio: a carga do cadastro **menos o estágio**.
+ *
+ * As três ausências são a mesma decisão, vista de três ângulos:
+ *
+ * - `stage` porque mover é outra ação, com rota, regra e consequências próprias
+ *   — o registro na linha do tempo, a última interação e o selo do contato.
+ *   Deixá-lo aqui seria um segundo caminho até a mesma escrita, e o funil
+ *   passaria a ter duas verdades sobre como um card muda de lugar.
+ * - `result` e `closedAt` porque são escritos juntos pelo encerramento
+ *   (ADR-0003), e um negócio encerrado não é editável de forma alguma.
+ * - `lastInteractionAt` porque corrigir o valor de uma proposta não é
+ *   acontecimento com o cliente. A lista dos que são está no spec, e editar não
+ *   está nela: um card que subisse ao topo da coluna por causa de um ajuste de
+ *   digitação mentiria sobre onde a negociação está viva.
+ */
+export type DealEdit = Omit<
+  DealRecord,
+  'id' | 'stage' | 'result' | 'closedAt' | 'lastInteractionAt' | 'deletedAt'
+>;
+
+/**
  * O que uma mudança de estágio escreve no negócio: a coluna de destino e o
  * momento do movimento.
  *
@@ -236,6 +257,42 @@ export class DealRepository extends Context.Tag('DealRepository')<
      * outra metade de ADR-0003 — que as três colunas nunca andem separadas.
      */
     readonly close: (id: DealId, close: DealClose) => Effect.Effect<DealWithRelations>;
+    /**
+     * Regrava os campos do cadastro e devolve o card no mesmo formato da
+     * listagem.
+     *
+     * **Não recusa nada**, como as outras escritas: quem decide se um negócio
+     * encerrado aceita edição é a regra pura (`refuseDealEdit`), acima da seam, e
+     * quem confere se o Lead e o responsável escolhidos existem é o caso de uso.
+     */
+    readonly update: (id: DealId, changes: DealEdit) => Effect.Effect<DealWithRelations>;
+    /**
+     * Marca o negócio como removido, gravando o momento em vez de apagar a
+     * linha.
+     *
+     * **A linha continua no banco de propósito**: a linha do tempo aponta para
+     * ela, e comentário não se apaga (ver o modelo em `schema.prisma`). O que
+     * muda é que toda leitura desta camada passa a não enxergá-la — inclusive o
+     * contador da coluna, que é onde a ausência do filtro apareceria primeiro.
+     *
+     * Não faz nada se o negócio não existir ou já tiver sido removido: quem
+     * precisa da recusa é o caso de uso, e ele já perguntou antes.
+     */
+    readonly softDelete: (id: DealId, at: Date) => Effect.Effect<void>;
+    /**
+     * Quantos negócios **em aberto** o contato tem.
+     *
+     * É a pergunta que a remoção de um Lead faz antes de agir, e o número que a
+     * recusa mostra a quem tentou. Em aberto quer dizer resultado `OPEN`: um
+     * negócio encerrado é história registrada e não trava a limpeza da carteira,
+     * e um negócio removido também não conta — a remoção lógica vale aqui como em
+     * toda leitura desta camada.
+     *
+     * Ela mora no repositório de Deal, e não no de Lead, porque conta negócios: é
+     * o caso de uso da remoção que junta as duas metades, que é onde as regras do
+     * CRM moram.
+     */
+    readonly countOpenByLead: (leadId: LeadId) => Effect.Effect<number>;
   }
 >() {}
 
@@ -583,6 +640,32 @@ export const DealRepositoryInMemory = (
           Ref.update(store, (deals) =>
             deals.map((deal) =>
               isVisible(id)(deal) ? { ...deal, lastInteractionAt: at } : deal,
+            ),
+          ),
+
+        update: (id, changes) => write(id, changes),
+
+        softDelete: (id, at) =>
+          Ref.update(store, (deals) =>
+            // A linha continua no array, com a data preenchida: é assim que a
+            // remoção lógica desaparece das leituras sem apagar a linha do tempo.
+            deals.map((deal) =>
+              isVisible(id)(deal) ? { ...deal, deletedAt: at } : deal,
+            ),
+          ),
+
+        countOpenByLead: (leadId) =>
+          Ref.get(store).pipe(
+            Effect.map(
+              (deals) =>
+                deals.filter(
+                  (deal) =>
+                    deal.leadId === leadId &&
+                    // O filtro de remoção lógica vem primeiro e não é opcional:
+                    // um negócio já removido não trava a remoção do contato.
+                    deal.deletedAt === null &&
+                    deal.result === 'OPEN',
+                ).length,
             ),
           ),
 

@@ -1,14 +1,18 @@
-import { refuseDealClose, type DealDetail } from '@kikos/domain';
+import { refuseDealClose, refuseDealEdit, type DealDetail } from '@kikos/domain';
 import { useState } from 'react';
 import { ApiError } from '../lib/api';
 import { formatDay, formatLastInteraction } from '../lib/dates';
-import { useDeal } from '../lib/deals';
+import { useDeal, useDeleteDeal } from '../lib/deals';
 import { formatBRL } from '../lib/money';
+import { Alert } from '../ui/Alert';
 import { Avatar } from '../ui/Avatar';
 import { DealResultBadge, DealStageBadge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { Definition, NotInformed } from '../ui/Definition';
 import { Modal } from '../ui/Modal';
+import { RemovalConfirm } from '../ui/RemovalConfirm';
 import { CloseDealActions } from './CloseDealActions';
+import { DEAL_EDIT_FORM_ID, DealEditForm } from './DealEditForm';
 import { DealTimelineSection } from './DealTimelineSection';
 
 /*
@@ -26,12 +30,18 @@ import { DealTimelineSection } from './DealTimelineSection';
  * cache: abrir o detalhamento a partir do painel não custa ida ao servidor, e há
  * um cache só a invalidar quando alguém comenta.
  *
- * **O rodapé é onde o negócio se encerra.** Os dois botões são a escolha inteira:
- * não há um "Encerrar" que pergunte depois, porque encerrar sem dizer como não é
- * uma operação que exista (ADR-0003). Depois do encerramento eles dão lugar ao
- * desfecho registrado — o negócio é terminal, e um botão que só serve para
- * receber 409 é um convite a um erro. Editar e remover chegam na fatia seguinte,
- * neste mesmo rodapé.
+ * **O rodapé é onde o negócio se trabalha inteiro** — encerrar, corrigir e
+ * remover moram nele, e nenhum dos três abre uma tela nova. Encerrar são dois
+ * botões e não um "Encerrar" que pergunte depois, porque encerrar sem dizer como
+ * não é uma operação que exista (ADR-0003); editar troca o conteúdo do modal
+ * pelo formulário; remover confirma em linha no próprio rodapé. Não há modal
+ * sobre modal.
+ *
+ * Depois do encerramento, encerrar e editar somem e dá lugar ao desfecho
+ * registrado — o negócio é terminal, e um botão que só serve para receber 409 é
+ * um convite a um erro. **Remover continua**: ADR-0003 recusa as três escritas
+ * que *mudam o desfecho* de um negócio encerrado, e retirar o registro inteiro
+ * não é uma delas.
  */
 
 const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
@@ -149,41 +159,86 @@ const failure = (error: unknown): string =>
     ? 'Este negócio não existe mais. Ele pode ter sido removido por outra pessoa.'
     : 'Não foi possível carregar este negócio. Feche e tente de novo.';
 
-export interface DealDetailModalProps {
-  readonly dealId: string;
-  readonly onClose: () => void;
-}
+/** O que a recusa da remoção tem a dizer para quem confirmou. */
+const removalFailure = (error: unknown): string | undefined => {
+  if (error === null || error === undefined) return undefined;
+
+  return error instanceof ApiError
+    ? error.message
+    : 'Não foi possível falar com o servidor. O negócio não foi removido.';
+};
 
 /**
- * O rodapé: encerrar o negócio, ou o desfecho de quem já foi encerrado.
+ * Em que estado o modal está.
  *
- * A recusa mora **aqui**, e não dentro dos botões, porque ela precisa
- * sobreviver a eles: quando o servidor responde 409 — outra pessoa encerrou o
- * negócio primeiro —, a invalidação traz o negócio já fechado e os botões dão
- * lugar ao desfecho. Quem clicou ficaria sem explicação nenhuma para a tela que
- * mudou sozinha.
+ * Os três são exclusivos de propósito: não existe "removendo enquanto edita", e
+ * um `boolean` para cada um deixaria essa combinação representável. O rodapé
+ * inteiro e o corpo do modal são decididos por este valor.
  */
-const DealActions = ({ deal }: { readonly deal: DealDetail }) => {
+type Mode = 'view' | 'edit' | 'removing';
+
+/**
+ * O rodapé em modo de leitura: remover, corrigir e encerrar — ou o desfecho de
+ * quem já foi encerrado.
+ *
+ * A recusa do encerramento mora **aqui**, e não dentro dos botões, porque ela
+ * precisa sobreviver a eles: quando o servidor responde 409 — outra pessoa
+ * encerrou o negócio primeiro —, a invalidação traz o negócio já fechado e os
+ * botões dão lugar ao desfecho. Quem clicou ficaria sem explicação nenhuma para a
+ * tela que mudou sozinha.
+ */
+const DealActions = ({
+  deal,
+  onEdit,
+  onRemove,
+}: {
+  readonly deal: DealDetail;
+  readonly onEdit: () => void;
+  readonly onRemove: () => void;
+}) => {
   const [refusal, setRefusal] = useState<string>();
 
   /*
-   * A **mesma** regra que a rota consulta antes de escrever, e não um
+   * As **mesmas** regras que a rota consulta antes de escrever, e não um
    * `deal.result === 'OPEN'` escrito aqui: o par estágio/resultado é ortogonal
-   * (ADR-0003) e hoje as duas leituras coincidem, mas quem decide o que é um
-   * negócio terminal é a regra, num lugar só. É o mesmo argumento que põe
+   * (ADR-0003) e hoje as leituras coincidem, mas quem decide o que é um negócio
+   * terminal é a regra, num lugar só. É o mesmo argumento que põe
    * `refuseStageMove` na coluna do board antes de qualquer ida ao servidor.
+   *
+   * São duas chamadas e não uma porque são duas perguntas — "dá para encerrar?" e
+   * "dá para editar?" —, e o dia em que uma delas mudar, a outra não muda junto
+   * por acidente.
    */
-  const refused = refuseDealClose(deal.stage);
+  const closeRefused = refuseDealClose(deal.stage);
+  const editRefused = refuseDealEdit(deal.stage);
 
   return (
     <>
-      {refusal === undefined ? null : (
-        <p role="alert" className="mr-auto text-sm text-lost-300">
-          {refusal}
-        </p>
-      )}
+      <div className="mr-auto flex flex-wrap items-center gap-3">
+        {/*
+          Remover continua disponível para um negócio encerrado: ADR-0003 recusa
+          as três escritas que mudam o desfecho — mover, editar e encerrar de
+          novo —, e retirar o registro inteiro não é uma delas. Um negócio
+          cadastrado por engano e encerrado por engano junto precisa poder sair.
+        */}
+        <Button variant="ghost" onClick={onRemove}>
+          Remover
+        </Button>
 
-      {refused === undefined ? (
+        {refusal === undefined ? null : (
+          <p role="alert" className="text-sm text-lost-300">
+            {refusal}
+          </p>
+        )}
+      </div>
+
+      {editRefused === undefined ? (
+        <Button variant="secondary" onClick={onEdit}>
+          Editar
+        </Button>
+      ) : null}
+
+      {closeRefused === undefined ? (
         <CloseDealActions
           dealId={deal.id}
           onClosed={() => setRefusal(undefined)}
@@ -204,8 +259,67 @@ const DealActions = ({ deal }: { readonly deal: DealDetail }) => {
   );
 };
 
+export interface DealDetailModalProps {
+  readonly dealId: string;
+  readonly onClose: () => void;
+}
+
 export const DealDetailModal = ({ dealId, onClose }: DealDetailModalProps) => {
   const deal = useDeal(dealId);
+  const remove = useDeleteDeal(dealId);
+  const [mode, setMode] = useState<Mode>('view');
+
+  const footer = (data: DealDetail) => {
+    if (mode === 'edit') {
+      return (
+        <>
+          {/* Cancelar volta para os dados e descarta: nada foi salvo até o
+              servidor responder. */}
+          <Button variant="secondary" onClick={() => setMode('view')}>
+            Cancelar
+          </Button>
+          <Button type="submit" form={DEAL_EDIT_FORM_ID}>
+            Salvar negócio
+          </Button>
+        </>
+      );
+    }
+
+    if (mode === 'removing') {
+      // `exactOptionalPropertyTypes` proíbe passar `error={undefined}`, então o
+      // caso sem recusa precisa não passar a prop.
+      const refusal = removalFailure(remove.error);
+
+      return (
+        <RemovalConfirm
+          question={`Remover ${data.title} do funil? A ação não se desfaz.`}
+          confirmLabel="Remover negócio"
+          isPending={remove.isPending}
+          {...(refusal === undefined ? {} : { error: refusal })}
+          onCancel={() => {
+            // A recusa anterior sai junto: quem cancelou e tentou de novo não
+            // deve reler o motivo de uma tentativa que já passou.
+            remove.reset();
+            setMode('view');
+          }}
+          /*
+           * Remover fecha o detalhamento, e o `onClose` do modal é uma navegação
+           * de volta ao funil: o negócio não existe mais, e o endereço dele
+           * passaria a responder 404 para quem recarregasse.
+           */
+          onConfirm={() => remove.mutate(undefined, { onSuccess: onClose })}
+        />
+      );
+    }
+
+    return (
+      <DealActions
+        deal={data}
+        onEdit={() => setMode('edit')}
+        onRemove={() => setMode('removing')}
+      />
+    );
+  };
 
   return (
     <Modal
@@ -216,17 +330,23 @@ export const DealDetailModal = ({ dealId, onClose }: DealDetailModalProps) => {
       {...(deal.data === undefined
         ? {}
         : { description: `${deal.data.lead.name} · ${deal.data.lead.company}` })}
-      {...(deal.data === undefined ? {} : { footer: <DealActions deal={deal.data} /> })}
+      {...(deal.data === undefined ? {} : { footer: footer(deal.data) })}
     >
       {deal.isError ? (
-        <p
-          role="alert"
-          className="rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
-        >
-          {failure(deal.error)}
-        </p>
+        <Alert>{failure(deal.error)}</Alert>
       ) : deal.data === undefined ? (
         <p className="text-sm text-ink-faint">Carregando o negócio…</p>
+      ) : mode === 'edit' ? (
+        /*
+         * A `key` é o identificador do negócio: trocar de negócio pela URL com o
+         * modal aberto precisa remontar o formulário, senão ele continuaria com
+         * os valores iniciais do anterior.
+         */
+        <DealEditForm
+          key={deal.data.id}
+          deal={deal.data}
+          onSaved={() => setMode('view')}
+        />
       ) : (
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="flex flex-col gap-8 lg:col-span-2">

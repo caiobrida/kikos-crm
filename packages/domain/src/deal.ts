@@ -273,6 +273,47 @@ export const CreateDealInput = Schema.Struct({
 export type CreateDealInput = typeof CreateDealInput.Type;
 export type CreateDealInputEncoded = typeof CreateDealInput.Encoded;
 
+/**
+ * O corpo de `PUT /deals/:id` — o cadastro **menos o estágio**.
+ *
+ * Como no Lead, `PUT` recebe a carga completa e não um punhado de campos
+ * mexidos: a requisição inteira é validada por um Schema só, o formulário de
+ * cadastro é reusado, e não existe estado intermediário em que metade do negócio
+ * foi salva. Os campos são derivados de `CreateDealInput` em vez de reescritos —
+ * um campo novo no cadastro entra na edição sozinho, que é o que impede os dois
+ * formulários de divergirem.
+ *
+ * **A ausência do estágio é a decisão desta entrada.** Mover um negócio já é uma
+ * ação, com rota própria (`PATCH /deals/:id/stage`), regra própria
+ * (`refuseStageMove`) e três consequências que a edição não tem: o registro na
+ * linha do tempo, a última interação e o selo do contato vinculado. Deixá-lo
+ * entrar aqui seria um segundo caminho até a mesma escrita — um que a coluna do
+ * board não consulta e que o histórico não registra —, e o funil passaria a ter
+ * duas verdades sobre como um card muda de lugar.
+ *
+ * `result` e `closedAt` ficam de fora pelo mesmo motivo, e mais um: eles são
+ * escritos juntos pelo encerramento (ADR-0003), e um negócio encerrado não é
+ * editável de forma alguma — quem recusa é `refuseDealEdit`, antes de qualquer
+ * escrita.
+ *
+ * `leadId` **continua editável**: um negócio cadastrado no contato errado é
+ * exatamente o tipo de engano que a edição existe para corrigir, e a busca por
+ * nome é a mesma do cadastro. Trocar o contato não sincroniza selo nenhum, como
+ * nenhuma edição sincroniza: o status do Lead segue os acontecimentos do funil, e
+ * corrigir um vínculo não é um deles.
+ */
+export const UpdateDealInput = Schema.Struct(
+  /*
+   * `Struct.omit` copia os campos do cadastro deixando `stage` de fora. Em
+   * TypeScript comum seria um `Omit<>` de tipo — a diferença é que aqui o objeto
+   * também existe em tempo de execução, e é ele que valida a requisição.
+   */
+  CreateDealInput.omit('stage').fields,
+);
+
+export type UpdateDealInput = typeof UpdateDealInput.Type;
+export type UpdateDealInputEncoded = typeof UpdateDealInput.Encoded;
+
 /*
  * ---------------------------------------------------------------------------
  * O movimento

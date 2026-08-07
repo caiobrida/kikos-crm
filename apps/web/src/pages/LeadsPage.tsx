@@ -5,6 +5,7 @@ import { INITIAL_LEADS_VIEW, useLeads, type LeadsView } from '../lib/leads';
 import { LEAD_STATUS_LABELS } from '../lib/labels';
 import { useSellers } from '../lib/sellers';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { Alert } from '../ui/Alert';
 import { Avatar } from '../ui/Avatar';
 import { LeadStatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -12,6 +13,7 @@ import { Input, Select } from '../ui/Field';
 import { OwnerFilter } from '../ui/OwnerFilter';
 import { Pagination } from '../ui/Pagination';
 import { CreateLeadModal } from './CreateLeadModal';
+import { LeadDetailModal } from './LeadDetailModal';
 import {
   Table,
   TableBody,
@@ -62,6 +64,14 @@ export const LeadsPage = () => {
    * alguém lembrar de limpá-lo ao fechar.
    */
   const [isCreating, setIsCreating] = useState(false);
+  /*
+   * O contato aberto no modal, se houver algum. Estado, e não rota: abrir um
+   * contato é consulta e correção pontual, e uma rota por linha encheria o
+   * histórico do navegador de estados intermediários — o botão voltar passaria a
+   * desfazer cliques em tabela. Quem tem endereço próprio é o detalhamento de um
+   * negócio, que é onde se trabalha a oportunidade.
+   */
+  const [openLeadId, setOpenLeadId] = useState<string>();
   const sellers = useSellers();
 
   /*
@@ -101,6 +111,15 @@ export const LeadsPage = () => {
       </header>
 
       {isCreating ? <CreateLeadModal onClose={() => setIsCreating(false)} /> : null}
+
+      {/*
+        Montado só quando há contato escolhido, como o de cadastro: assim cada
+        abertura começa do zero — em modo de leitura, sem a edição de antes meio
+        preenchida por baixo.
+      */}
+      {openLeadId === undefined ? null : (
+        <LeadDetailModal leadId={openLeadId} onClose={() => setOpenLeadId(undefined)} />
+      )}
 
       {/*
         Os controles são dimensionados pelo contêiner, e não por uma classe de
@@ -152,12 +171,7 @@ export const LeadsPage = () => {
       </div>
 
       {leads.isError ? (
-        <p
-          role="alert"
-          className="rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
-        >
-          Não foi possível carregar os contatos. Tente de novo.
-        </p>
+        <Alert>Não foi possível carregar os contatos. Tente de novo.</Alert>
       ) : null}
 
       <Table>
@@ -185,7 +199,9 @@ export const LeadsPage = () => {
             </TableEmpty>
           ) : (
             page.data.map((lead) => (
-              <TableRow key={lead.id}>
+              // A linha inteira abre o contato: é o padrão do produto, o mesmo
+              // que o card do board segue no funil.
+              <TableRow key={lead.id} onClick={() => setOpenLeadId(lead.id)}>
                 <TableCell className="font-medium whitespace-nowrap">
                   {lead.name}
                 </TableCell>

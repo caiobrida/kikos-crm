@@ -1,9 +1,12 @@
 import { describe, expect, it } from '@effect/vitest';
 import { CLOSED_DEAL_RESULTS, DEAL_STAGES, OPEN_DEAL_STAGES } from './enums';
 import {
+  DEAL_CLOSE_REFUSALS,
+  DEAL_EDIT_REFUSALS,
   DEAL_RESULT_LABELS,
   isOpenDealStage,
   refuseDealClose,
+  refuseDealEdit,
   refuseStageMove,
   stageDrop,
 } from './pipeline';
@@ -98,6 +101,50 @@ describe('refuseDealClose', () => {
     // 409, e não 422: o pedido existe no funil; o que impede é o desfecho já
     // registrado. Reabrir negócio não existe (ADR-0003).
     expect(refuseDealClose('CLOSED')).toBe('DealAlreadyClosed');
+  });
+});
+
+/*
+ * A regra que decide a edição — a terceira irmã, e a mais curta das três.
+ *
+ * Ela existe separada de `refuseDealClose` apesar de as duas responderem hoje a
+ * mesma coisa, e o motivo é o mesmo que separa as frases: o que a pessoa acabou
+ * de tentar é outro. Quem clicou em "Editar" quer saber por que o formulário não
+ * abriu; quem clicou em "Ganho" quer saber por que o desfecho não mudou.
+ */
+describe('refuseDealEdit', () => {
+  it('deixa editar um negócio em qualquer estágio aberto', () => {
+    for (const stage of OPEN_DEAL_STAGES) {
+      expect(refuseDealEdit(stage)).toBeUndefined();
+    }
+  });
+
+  it('recusa editar um negócio já encerrado', () => {
+    // 409, e não 422: o pedido é legítimo, e o que impede é o estado em que o
+    // negócio está. É a terceira escrita que ADR-0003 recusa, ao lado de mover e
+    // de encerrar de novo.
+    expect(refuseDealEdit('CLOSED')).toBe('DealAlreadyClosed');
+  });
+
+  it('recusa exatamente onde as outras duas escritas do funil recusam', () => {
+    /*
+     * As três leituras não podem divergir: um negócio que não se move e não se
+     * encerra de novo também não se edita, e um que aceita as duas aceita a
+     * terceira. É o "qualquer escrita em um Deal fechado" de ADR-0003 escrito
+     * como asserção.
+     */
+    for (const stage of DEAL_STAGES) {
+      expect(refuseDealEdit(stage)).toBe(refuseDealClose(stage));
+      expect(refuseDealEdit(stage)).toBe(refuseStageMove(stage, 'NEW'));
+    }
+  });
+
+  it('explica a recusa com palavras próprias, e não com as do encerramento', () => {
+    // A tag é a mesma; a frase não. Quem tentou editar precisa ler sobre editar.
+    expect(DEAL_EDIT_REFUSALS.DealAlreadyClosed).not.toBe(
+      DEAL_CLOSE_REFUSALS.DealAlreadyClosed,
+    );
+    expect(DEAL_EDIT_REFUSALS.DealAlreadyClosed).not.toBe('');
   });
 });
 

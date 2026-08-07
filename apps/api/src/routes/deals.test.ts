@@ -1,6 +1,7 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_CLOSE_REFUSALS,
+  DEAL_EDIT_REFUSALS,
   DEAL_STAGES,
   DealBoard,
   type DealDetail,
@@ -1233,6 +1234,409 @@ describe('POST /deals/:id/close', () => {
       });
 
       expect(response.statusCode).toBe(201);
+    });
+  });
+});
+
+/*
+ * O contrato de `PUT /deals/:id`.
+ *
+ * O corpo é o do cadastro menos o estágio, validado pelo mesmo Schema — o que
+ * estes testes provam não é "a API recusa", que já está coberto lá. O que é
+ * próprio da edição são as fronteiras que ela respeita:
+ *
+ * - **negócio encerrado não se edita** (409), pelo mesmo princípio que impede
+ *   movê-lo — é a terceira escrita que ADR-0003 recusa;
+ * - **editar não move o card, não avança a última interação e não mexe no selo
+ *   do contato.** Corrigir o valor de uma proposta não é acontecimento com o
+ *   cliente, e um card que subisse ao topo da coluna por causa de um ajuste de
+ *   digitação mentiria sobre onde a negociação está viva.
+ */
+describe('PUT /deals/:id', () => {
+  /** O negócio que este bloco edita. Está em Novo, do contato Ana Beatriz. */
+  const DEAL_TITLE = 'Esteiras para a sala principal';
+  const LEAD_NAME = 'Ana Beatriz Souza';
+
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(DEAL_TITLE);
+  });
+
+  /** A carga completa, como o formulário de edição a manda. */
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    title: DEAL_TITLE,
+    valueInCents: 1_250_000,
+    leadId: deal.lead.id,
+    ownerId: deal.owner.id,
+    expectedCloseDate: '2026-10-15',
+    description: 'Doze esteiras, com instalação.',
+    ...overrides,
+  });
+
+  /** Edita e decodifica a resposta com o mesmo Schema do card do board. */
+  const edit = async (overrides: Record<string, unknown> = {}, id: string = deal.id) => {
+    const response = await harness.put(`/deals/${id}`, payload(overrides));
+
+    expect(response.statusCode).toBe(200);
+    return Schema.decodeUnknownSync(DealListItem)(response.json());
+  };
+
+  const rejection = async (
+    overrides: Record<string, unknown>,
+    status: number,
+    id: string = deal.id,
+  ) => {
+    const response = await harness.put(`/deals/${id}`, payload(overrides));
+
+    expect(response.statusCode).toBe(status);
+    return response.json<{
+      error: string;
+      message: string;
+      issues?: { path: string }[];
+    }>();
+  };
+
+  const detailOf = (id: string = deal.id): Promise<DealDetail> =>
+    read.dealDetail(harness, id);
+
+  describe('a edição', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'PUT',
+        url: `/deals/${deal.id}`,
+        payload: payload(),
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('corrige o valor e a data prevista, que é o caso do spec', async () => {
+      const edited = await edit({ valueInCents: 1_990_000 });
+
+      expect(edited.id).toBe(deal.id);
+      expect(edited.valueInCents).toBe(1_990_000);
+
+      const detail = await detailOf();
+      expect(detail.expectedCloseDate).toEqual(new Date('2026-10-15T00:00:00.000Z'));
+      expect(detail.description).toBe('Doze esteiras, com instalação.');
+    });
+
+    it('reflete no board imediatamente', async () => {
+      await edit({ title: 'Esteiras para a sala principal — revisado' });
+
+      const card = columnOf(await board(), 'NEW').deals.find(
+        (candidate) => candidate.id === deal.id,
+      );
+      expect(card?.title).toBe('Esteiras para a sala principal — revisado');
+    });
+
+    it('limpa os campos opcionais que foram apagados na tela', async () => {
+      await edit({ expectedCloseDate: '', description: '' });
+
+      // Apagar o campo na tela precisa apagá-lo no banco: `""` volta a ser
+      // `NULL`, e não uma string vazia que a tela depois trataria como nada.
+      const detail = await detailOf();
+      expect(detail.expectedCloseDate).toBeNull();
+      expect(detail.description).toBeNull();
+    });
+
+    it('passa o negócio para outro vendedor', async () => {
+      const edited = await edit({ ownerId: harness.manager.id });
+
+      expect(edited.owner).toEqual({
+        id: harness.manager.id,
+        name: harness.manager.name,
+      });
+    });
+
+    it('corrige o contato vinculado', async () => {
+      // Um negócio cadastrado no contato errado é exatamente o engano que a
+      // edição existe para corrigir.
+      const other = await leadNamed('Carla Dias');
+      const edited = await edit({ leadId: other.id });
+
+      expect(edited.lead).toEqual({
+        id: other.id,
+        name: other.name,
+        company: other.company,
+      });
+    });
+
+    it('não move o negócio de coluna', async () => {
+      /*
+       * Mover é `PATCH /deals/:id/stage`, e é lá que moram a regra do funil, o
+       * registro na linha do tempo e o selo do contato. O estágio nem existe no
+       * Schema desta entrada, então não há como o corpo escolhê-lo.
+       */
+      const edited = await edit({ stage: 'NEGOTIATION' });
+
+      expect(edited.stage).toBe('NEW');
+      expect(columnOf(await board(), 'NEW').deals.map((card) => card.id)).toContain(
+        deal.id,
+      );
+    });
+
+    it('não deixa o corpo escolher o desfecho', async () => {
+      const edited = await edit({ result: 'WON', closedAt: '2026-05-30T12:00:00.000Z' });
+
+      // Resultado e data de fechamento nascem juntos no encerramento (ADR-0003),
+      // e nenhum dos dois existe neste Schema.
+      expect(edited.result).toBe('OPEN');
+      expect((await detailOf()).closedAt).toBeNull();
+    });
+
+    it('não avança a última interação, e o card não sobe na coluna', async () => {
+      const before = (await detailOf()).lastInteractionAt.getTime();
+      await edit({ valueInCents: 999_000 });
+
+      /*
+       * Corrigir um valor não é acontecimento com o cliente: a lista dos que são
+       * está no spec, e editar não está nela.
+       */
+      expect((await detailOf()).lastInteractionAt.getTime()).toBe(before);
+    });
+
+    it('não mexe no selo do contato vinculado', async () => {
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEW');
+      await edit({ valueInCents: 999_000 });
+
+      // O status do Lead segue os acontecimentos do funil — criar, mover,
+      // encerrar. Corrigir um cadastro não é nenhum deles.
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEW');
+    });
+
+    it('não deixa registro na linha do tempo', async () => {
+      const before = (await read.dealTimeline(harness, deal.id)).length;
+      await edit({ title: 'Esteiras da sala principal' });
+
+      /*
+       * O histórico registra o que aconteceu com a negociação, e não cada
+       * correção de digitação. Quem quiser deixar anotado o que mudou escreve um
+       * comentário — que é justamente o que a linha do tempo é.
+       */
+      expect(await read.dealTimeline(harness, deal.id)).toHaveLength(before);
+    });
+
+    it('não mexe em nenhum outro negócio', async () => {
+      await edit({ valueInCents: 1 });
+
+      expect((await dealNamed('Piso emborrachado')).valueInCents).toBe(320_000);
+      expect((await list('?pageSize=100')).total).toBe(VISIBLE_DEAL_COUNT);
+    });
+  });
+
+  describe('a recusa', () => {
+    it('devolve 409 ao editar um negócio já encerrado, e não grava nada', async () => {
+      const closed = columnOf(await board(), 'CLOSED').deals.at(0);
+      const before = await detailOf(closed?.id ?? '');
+
+      const body = await rejection({ title: 'Outro título' }, 409, closed?.id ?? '');
+
+      /*
+       * 409, e não 422: o pedido é legítimo, e o que impede é o desfecho já
+       * registrado. É a terceira escrita que ADR-0003 recusa, ao lado de mover e
+       * de encerrar de novo.
+       */
+      expect(body.error).toBe('DealAlreadyClosed');
+      /*
+       * A frase é a da **edição**, e não a do encerramento: a tag é a mesma, mas
+       * quem clicou em "Editar" precisa ler sobre editar. Ela vem do pacote
+       * compartilhado, junto da regra.
+       */
+      expect(body.message).toBe(DEAL_EDIT_REFUSALS.DealAlreadyClosed);
+      expect((await detailOf(closed?.id ?? '')).title).toBe(before.title);
+    });
+
+    it('devolve 409 mesmo para o negócio que este teste acabou de encerrar', async () => {
+      const closing = await harness.post(`/deals/${deal.id}/close`, { result: 'WON' });
+      expect(closing.statusCode).toBe(200);
+
+      // O caminho que a tela de fato produz: o formulário aberto numa aba
+      // enquanto a outra encerra o negócio.
+      expect((await rejection({ valueInCents: 1 }, 409)).error).toBe('DealAlreadyClosed');
+    });
+
+    it('devolve 404 quando o negócio não existe', async () => {
+      expect((await rejection({}, 404, randomUUID())).error).toBe('DealNotFound');
+    });
+
+    it('devolve 404 quando o negócio foi removido', async () => {
+      const removed = harness.deals.find((record) => record.title === DELETED_DEAL_TITLE);
+
+      // Negócio removido não existe para quem lê — nem para quem edita.
+      expect((await rejection({}, 404, removed?.id ?? '')).error).toBe('DealNotFound');
+    });
+
+    it('devolve 404 quando o Lead escolhido não existe', async () => {
+      expect((await rejection({ leadId: randomUUID() }, 404)).error).toBe('LeadNotFound');
+    });
+
+    it('devolve 404 quando o Lead escolhido foi removido', async () => {
+      const removed = harness.leads.find((record) => record.name === DELETED_LEAD_NAME);
+
+      expect((await rejection({ leadId: removed?.id }, 404)).error).toBe('LeadNotFound');
+    });
+
+    it('devolve 404 quando o responsável escolhido não existe', async () => {
+      expect((await rejection({ ownerId: randomUUID() }, 404)).error).toBe(
+        'OwnerNotFound',
+      );
+    });
+
+    it('aponta o campo obrigatório em branco, e não grava nada', async () => {
+      const body = await rejection({ title: '   ' }, 400);
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('title');
+      expect((await detailOf()).title).toBe(DEAL_TITLE);
+    });
+
+    it('aponta o valor negativo e a data malformada', async () => {
+      expect((await rejection({ valueInCents: -1 }, 400)).issues?.at(0)?.path).toBe(
+        'valueInCents',
+      );
+      expect(
+        (await rejection({ expectedCloseDate: '15/10/2026' }, 400)).issues?.at(0)?.path,
+      ).toBe('expectedCloseDate');
+    });
+
+    it('recusa um identificador de negócio que não é UUID', async () => {
+      const body = await rejection({}, 400, 'o-negocio-de-ontem');
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('id');
+    });
+  });
+});
+
+/*
+ * O contrato de `DELETE /deals/:id`.
+ *
+ * A regra é a da remoção lógica, e o que este bloco existe para provar é a
+ * consequência dela: **um negócio removido some de todo lugar** — do card, do
+ * contador da coluna, da listagem, do link direto e da linha do tempo. O filtro
+ * mora no repositório justamente para que nenhuma rota precise lembrar dele.
+ */
+describe('DELETE /deals/:id', () => {
+  /** O negócio que este bloco remove. Está em Novo, do contato Ana Beatriz. */
+  const DEAL_TITLE = 'Esteiras para a sala principal';
+  const LEAD_NAME = 'Ana Beatriz Souza';
+
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(DEAL_TITLE);
+  });
+
+  describe('a remoção', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'DELETE',
+        url: `/deals/${deal.id}`,
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('responde 204 e some do board, do contador e da listagem', async () => {
+      const before = columnOf(await board(), 'NEW');
+      const response = await harness.del(`/deals/${deal.id}`);
+
+      // 204: nada a devolver. O recurso deixou de existir para quem lê.
+      expect(response.statusCode).toBe(204);
+      expect(response.body).toBe('');
+
+      const after = columnOf(await board(), 'NEW');
+      expect(after.total).toBe(before.total - 1);
+      expect(after.deals.map((card) => card.id)).not.toContain(deal.id);
+      expect((await list('?pageSize=100')).total).toBe(VISIBLE_DEAL_COUNT - 1);
+    });
+
+    it('some também do link direto e da linha do tempo', async () => {
+      await harness.del(`/deals/${deal.id}`);
+
+      /*
+       * O negócio tem endereço próprio — o modal é uma rota —, e um link
+       * compartilhado antes da remoção precisa explicar o que aconteceu em vez
+       * de mostrar uma tela vazia.
+       */
+      expect((await harness.get(`/deals/${deal.id}`)).statusCode).toBe(404);
+      expect((await harness.get(`/deals/${deal.id}/comments`)).statusCode).toBe(404);
+    });
+
+    it('não perde nem duplica os outros negócios do funil', async () => {
+      await harness.del(`/deals/${deal.id}`);
+      const after = await board();
+
+      expect(totalsOf(after).reduce((total, column) => total + column, 0)).toBe(
+        VISIBLE_DEAL_COUNT - 1,
+      );
+    });
+
+    it('remove um negócio já encerrado', async () => {
+      const closed = columnOf(await board(), 'CLOSED').deals.at(0);
+
+      /*
+       * ADR-0003 recusa as três escritas que **mudam o desfecho** de um negócio
+       * encerrado — mover, editar e encerrar de novo. Remover não muda desfecho
+       * nenhum: retira o registro inteiro, que é o que se quer de um negócio
+       * cadastrado por engano e encerrado por engano junto.
+       */
+      expect((await harness.del(`/deals/${closed?.id ?? ''}`)).statusCode).toBe(204);
+      expect(
+        columnOf(await board(), 'CLOSED').deals.map((card) => card.id),
+      ).not.toContain(closed?.id);
+    });
+
+    it('não mexe no contato vinculado', async () => {
+      const before = await leadNamed(LEAD_NAME);
+      await harness.del(`/deals/${deal.id}`);
+
+      /*
+       * O contato continua na carteira com o selo e a data que tinha: remover um
+       * negócio não é evento de status, e o Lead existe independentemente de
+       * haver negócio (ver CONTEXT.md).
+       */
+      const after = await leadNamed(LEAD_NAME);
+      expect(after.status).toBe(before.status);
+      expect(after.lastInteractionAt.getTime()).toBe(before.lastInteractionAt.getTime());
+    });
+
+    it('deixa o contato removível quando era o último negócio em aberto dele', async () => {
+      // As duas metades da fatia se encontram aqui: remover os negócios em
+      // aberto é o que destrava a remoção do contato.
+      for (const title of ['Esteiras para a sala principal', 'Piso emborrachado']) {
+        const open = await dealNamed(title);
+        expect((await harness.del(`/deals/${open.id}`)).statusCode).toBe(204);
+      }
+
+      const lead = await leadNamed(LEAD_NAME);
+      expect((await harness.del(`/leads/${lead.id}`)).statusCode).toBe(204);
+    });
+  });
+
+  describe('a recusa', () => {
+    it('devolve 404 quando o negócio não existe', async () => {
+      const response = await harness.del(`/deals/${randomUUID()}`);
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json<{ error: string }>().error).toBe('DealNotFound');
+    });
+
+    it('devolve 404 ao remover de novo o que já foi removido', async () => {
+      expect((await harness.del(`/deals/${deal.id}`)).statusCode).toBe(204);
+
+      // Duas abas com o mesmo negócio aberto, ou dois cliques: a segunda
+      // remoção não encontra nada, e é isso que a tela explica.
+      expect((await harness.del(`/deals/${deal.id}`)).statusCode).toBe(404);
+    });
+
+    it('recusa um identificador que não é UUID', async () => {
+      const response = await harness.del('/deals/o-negocio-de-ontem');
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json<{ error: string; issues: { path: string }[] }>();
+      expect(body.issues.map((issue) => issue.path)).toContain('id');
     });
   });
 });

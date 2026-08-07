@@ -2,6 +2,7 @@ import {
   CloseDealInput,
   CreateDealInput,
   DEAL_CLOSE_REFUSALS,
+  DEAL_EDIT_REFUSALS,
   DealAlreadyClosed,
   DealBoard,
   DealBoardQuery,
@@ -17,11 +18,13 @@ import {
   MoveDealStageInput,
   OwnerNotFound,
   STAGE_MOVE_REFUSALS,
+  UpdateDealInput,
   dealCloseRecord,
   isOpenDealStage,
   leadStatusAfterDealClosed,
   leadStatusAfterDealMoved,
   refuseDealClose,
+  refuseDealEdit,
   refuseStageMove,
   stageMoveRecord,
   type DealBoardColumn,
@@ -457,6 +460,113 @@ const closeDeal = (
     return closed;
   });
 
+/**
+ * Corrige o cadastro de um negócio.
+ *
+ * A regra que ela aplica é a terceira irmã das duas acima — `refuseDealEdit`, no
+ * pacote compartilhado —, e é a mesma que o detalhamento consulta antes de
+ * oferecer o botão "Editar". Negócio encerrado não aceita escrita (ADR-0003), e
+ * a recusa é 409 pelo mesmo motivo das outras: o que impede não é o pedido, é o
+ * desfecho já registrado.
+ *
+ * Depois disso sobram as duas conferências do cadastro, e pelos mesmos motivos:
+ * o Lead e o responsável escolhidos podem ter sumido desde que a tela carregou.
+ *
+ * O que a edição **não** faz é o que vale a pena ler aqui, e é o que a separa das
+ * outras duas escritas do funil:
+ *
+ * - **não move o card.** Mover é `PATCH /deals/:id/stage`, com regra própria e
+ *   três consequências que a edição não tem. O estágio nem existe no Schema de
+ *   entrada, nem no `DealEdit` do repositório.
+ * - **não avança a última interação, não mexe no selo do contato e não deixa
+ *   registro na linha do tempo.** Corrigir o valor de uma proposta não é
+ *   acontecimento com o cliente — a lista dos que são está no spec, e editar não
+ *   está nela. Um card que subisse ao topo da coluna por causa de um ajuste de
+ *   digitação mentiria sobre onde a negociação está viva, e um histórico cheio de
+ *   correções de texto esconderia o que de fato aconteceu.
+ *
+ * É por isso que ela é a única escrita desta rota que não pede `Clock`: não há
+ * momento a registrar.
+ */
+const updateDeal = (
+  id: DealId,
+  input: UpdateDealInput,
+): Effect.Effect<
+  DealWithRelations,
+  DealNotFound | DealAlreadyClosed | LeadNotFound | OwnerNotFound,
+  DealRepository | LeadRepository | UserRepository
+> =>
+  Effect.gen(function* () {
+    const deal = yield* requireDeal(id);
+    const refusal = refuseDealEdit(deal.stage);
+
+    if (refusal !== undefined) {
+      /*
+       * A frase é indexada **pela recusa**, como no encerramento: é o que faz
+       * uma recusa nova nascida na regra chegar aqui sem mensagem e quebrar o
+       * typecheck, em vez de escapar com a explicação de outra.
+       */
+      return yield* Effect.fail(
+        new DealAlreadyClosed({ message: DEAL_EDIT_REFUSALS[refusal] }),
+      );
+    }
+
+    const leads = yield* LeadRepository;
+    const lead = yield* leads.findById(input.leadId);
+
+    if (Option.isNone(lead)) {
+      return yield* Effect.fail(
+        new LeadNotFound({ message: 'O Lead escolhido não existe mais.' }),
+      );
+    }
+
+    const users = yield* UserRepository;
+    const owner = yield* users.findById(input.ownerId);
+
+    if (Option.isNone(owner)) {
+      return yield* Effect.fail(
+        new OwnerNotFound({
+          message: 'O vendedor responsável escolhido não existe mais.',
+        }),
+      );
+    }
+
+    const deals = yield* DealRepository;
+    return yield* deals.update(id, {
+      ...input,
+      // O Schema entrega `undefined` para o campo opcional em branco; a coluna
+      // do banco quer `NULL`. A tradução acontece uma vez, aqui — e é ela que
+      // faz apagar a descrição na tela apagá-la de verdade.
+      description: input.description ?? null,
+      expectedCloseDate: input.expectedCloseDate ?? null,
+    });
+  });
+
+/**
+ * Remove um negócio — logicamente, gravando o momento em vez de apagar a linha.
+ *
+ * **Ela não consulta `refuseDealEdit`, e a ausência é a decisão.** ADR-0003
+ * recusa as três escritas que *mudam o desfecho* de um negócio encerrado — mover,
+ * editar e encerrar de novo. Remover não muda desfecho nenhum: retira o registro
+ * inteiro, que é exatamente o que se quer de um negócio cadastrado por engano —
+ * inclusive de um que foi encerrado por engano junto.
+ *
+ * A linha do tempo dele não é apagada, e nem precisa ser: comentário não tem
+ * remoção (ver o modelo em `schema.prisma`), e a leitura do histórico começa por
+ * achar o negócio, que já não existe para quem lê.
+ */
+const removeDeal = (id: DealId): Effect.Effect<void, DealNotFound, DealRepository> =>
+  Effect.gen(function* () {
+    yield* requireDeal(id);
+
+    // A hora vem do `Clock` do Effect, como nas outras escritas: é serviço do
+    // runtime, e é o que um teste troca por `TestClock` para parar o tempo.
+    const now = new Date(yield* Clock.currentTimeMillis);
+
+    const deals = yield* DealRepository;
+    yield* deals.softDelete(id, now);
+  });
+
 export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): void => {
   const run = makeRunner(runtime);
   const authenticate = makeAuthenticate(runtime);
@@ -515,10 +625,47 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
   });
 
   /*
+   * `PUT`, e não `PATCH`: o corpo é o negócio inteiro, campo por campo, validado
+   * pelo mesmo Schema que o cadastro usa menos o estágio. É o par do `PATCH`
+   * abaixo — aquele recebe uma ação, este recebe um formulário —, e é a razão de
+   * mover ter ganhado um sub-recurso no caminho desde a fatia que o escreveu.
+   */
+  app.put('/deals/:id', { preHandler: authenticate }, (request, reply) => {
+    const program = Effect.all([
+      decodeParams(DealIdParams, request.params),
+      decodeBody(UpdateDealInput, request.body),
+    ]).pipe(Effect.flatMap(([params, input]) => updateDeal(params.id, input)));
+
+    return run(reply, program, (reply, deal) =>
+      /*
+       * 200 com o card no mesmo Schema do board. A tela não o usa para
+       * redesenhar a coluna à mão: ela invalida o cache e deixa o servidor
+       * devolver o funil já com o negócio corrigido.
+       */
+      reply.send(Schema.encodeSync(DealListItem)(deal)),
+    );
+  });
+
+  app.delete('/deals/:id', { preHandler: authenticate }, (request, reply) => {
+    const program = decodeParams(DealIdParams, request.params).pipe(
+      Effect.flatMap((params) => removeDeal(params.id)),
+    );
+
+    return run(reply, program, (reply) =>
+      /*
+       * 204 e corpo nenhum: não há recurso a devolver — ele deixou de existir
+       * para quem lê. A tela fecha o modal, volta para o funil e o recarrega
+       * pelo servidor.
+       */
+      reply.status(204).send(),
+    );
+  });
+
+  /*
    * `PATCH`, e não `PUT`: o corpo é a coluna de destino, não o negócio inteiro.
    * Mover é uma ação sobre um registro que já existe, e o sub-recurso no
-   * caminho (`/stage`) é o que deixa a rota de edição livre para receber o
-   * formulário completo na fatia que a implementa.
+   * caminho (`/stage`) é o que deixa a rota de edição acima livre para receber o
+   * formulário completo.
    */
   /*
    * `POST`, e não `PATCH`: encerrar não é editar um campo do negócio, é uma

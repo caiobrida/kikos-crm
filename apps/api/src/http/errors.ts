@@ -46,9 +46,15 @@ export const toHttpError = (error: DomainError): HttpError => {
     /*
      * 409: o pedido é legítimo, e o que impede é o estado em que o registro
      * está — um conflito com o que já foi registrado. Negócio encerrado não
-     * aceita escrita, e reabrir não existe (ADR-0003).
+     * aceita escrita, e reabrir não existe (ADR-0003); contato com negócio em
+     * aberto não é removido, e a mensagem diz quantos travam a operação.
+     *
+     * Os dois são estados que mudam: encerrar os negócios de um contato o
+     * libera para remoção. É o que separa este status do 422, que recusa um
+     * pedido que não existe no funil de jeito nenhum.
      */
     case 'DealAlreadyClosed':
+    case 'LeadHasOpenDeals':
       return { status: 409, body: { error: error._tag, message: error.message } };
 
     /*
