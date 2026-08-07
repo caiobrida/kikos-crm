@@ -289,28 +289,36 @@ export const DealRepositoryInMemory = (
         users.map((user) => [user.id, { id: user.id, name: user.name }]),
       );
 
-      /** O dossiê de um contato: a linha do Lead mais o responsável dele. */
-      const dossierOf = (lead: LeadRecord): LeadDossier => {
-        const owner = owners.get(lead.ownerId);
+      /**
+       * O responsável de identificador `id`.
+       *
+       * Um responsável ausente é **defeito, não erro de domínio**: no banco a
+       * chave estrangeira garante que isto não acontece, e num teste significa
+       * fixture quebrada. `subject` entra na mensagem porque quem lê o estouro
+       * precisa saber qual registro apontava para o vazio.
+       */
+      const ownerOf = (id: UserId, subject: string): UserSummary => {
+        const owner = owners.get(id);
 
         if (owner === undefined) {
-          // Defeito, não erro de domínio: no banco a chave estrangeira garante
-          // que isto não acontece, e num teste significa fixture quebrada.
           throw new Error(
-            `O Lead ${lead.id} aponta para um responsável ausente da Layer em memória.`,
+            `${subject} aponta para um responsável ausente da Layer em memória.`,
           );
         }
 
-        return {
-          id: lead.id,
-          name: lead.name,
-          company: lead.company,
-          email: lead.email,
-          phone: lead.phone,
-          jobTitle: lead.jobTitle,
-          owner,
-        };
+        return owner;
       };
+
+      /** O dossiê de um contato: a linha do Lead mais o responsável dele. */
+      const dossierOf = (lead: LeadRecord): LeadDossier => ({
+        id: lead.id,
+        name: lead.name,
+        company: lead.company,
+        email: lead.email,
+        phone: lead.phone,
+        jobTitle: lead.jobTitle,
+        owner: ownerOf(lead.ownerId, `O Lead ${lead.id}`),
+      });
 
       const resolve = (
         deal: DealRecord,
@@ -479,13 +487,12 @@ export const DealRepositoryInMemory = (
              * mesmo que o `JOIN` do Prisma faz, que também não filtra a relação.
              */
             const lead = leads.find((candidate) => candidate.id === deal.leadId);
-            const owner = owners.get(deal.ownerId);
 
-            if (lead === undefined || owner === undefined) {
-              // Defeito, não erro de domínio: no banco as chaves estrangeiras
-              // garantem que isto não acontece.
+            if (lead === undefined) {
+              // Defeito, não erro de domínio: no banco a chave estrangeira
+              // garante que isto não acontece.
               throw new Error(
-                `O negócio ${deal.id} aponta para Lead ou responsável ausente da Layer em memória.`,
+                `O negócio ${deal.id} aponta para um Lead ausente da Layer em memória.`,
               );
             }
 
@@ -495,7 +502,12 @@ export const DealRepositoryInMemory = (
               deletedAt: _deletedAt,
               ...rest
             } = deal;
-            return Option.some({ ...rest, lead: dossierOf(lead), owner });
+
+            return Option.some({
+              ...rest,
+              lead: dossierOf(lead),
+              owner: ownerOf(deal.ownerId, `O negócio ${deal.id}`),
+            });
           }),
 
         recordDealInteraction: (id, at) =>

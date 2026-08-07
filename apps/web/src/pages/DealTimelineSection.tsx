@@ -75,11 +75,16 @@ const SystemRecord = ({ comment }: { readonly comment: Comment }) => (
   </article>
 );
 
-export interface DealTimelineProps {
+/*
+ * O nome carrega o sufixo `Section` para não colidir com `DealTimeline`, que no
+ * pacote de domínio é o Schema da linha do tempo. Duas coisas com o mesmo nome
+ * num `import` seriam duas coisas diferentes conforme o arquivo.
+ */
+export interface DealTimelineSectionProps {
   readonly dealId: string;
 }
 
-export const DealTimeline = ({ dealId }: DealTimelineProps) => {
+export const DealTimelineSection = ({ dealId }: DealTimelineSectionProps) => {
   const timeline = useDealTimeline(dealId);
   const create = useCreateComment(dealId);
 

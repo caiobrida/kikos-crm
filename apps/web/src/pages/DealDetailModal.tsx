@@ -1,13 +1,13 @@
 import type { DealDetail } from '@kikos/domain';
-import type { ReactNode } from 'react';
 import { ApiError } from '../lib/api';
 import { formatDay, formatLastInteraction } from '../lib/dates';
 import { useDeal } from '../lib/deals';
 import { formatBRL } from '../lib/money';
 import { Avatar } from '../ui/Avatar';
 import { DealResultBadge, DealStageBadge } from '../ui/Badge';
+import { Definition, NotInformed } from '../ui/Definition';
 import { Modal } from '../ui/Modal';
-import { DealTimeline } from './DealTimeline';
+import { DealTimelineSection } from './DealTimelineSection';
 
 /*
  * O detalhamento de um negócio: os dados, o dossiê do cliente e a linha do
@@ -28,23 +28,6 @@ import { DealTimeline } from './DealTimeline';
  * remover chegam nas fatias seguintes — e chegam **dentro deste modal**, que é o
  * motivo de o rodapé nascer vazio em vez de não existir.
  */
-
-/** Uma linha do bloco de dados: o rótulo e o que ele vale. */
-const Definition = ({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-}) => (
-  <div className="flex flex-col gap-0.5">
-    <dt className="text-xs text-ink-faint">{label}</dt>
-    <dd className="text-sm text-ink">{children}</dd>
-  </div>
-);
-
-/** O que a tela mostra onde não há dado nenhum. */
-const Empty = () => <span className="text-ink-faint">Não informado</span>;
 
 const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
   <section>
@@ -82,7 +65,11 @@ const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
       </Definition>
 
       <Definition label="Previsão de fechamento">
-        {deal.expectedCloseDate === null ? <Empty /> : formatDay(deal.expectedCloseDate)}
+        {deal.expectedCloseDate === null ? (
+          <NotInformed />
+        ) : (
+          formatDay(deal.expectedCloseDate)
+        )}
       </Definition>
 
       {deal.closedAt === null ? null : (
@@ -92,7 +79,7 @@ const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
       <div className="sm:col-span-2">
         <Definition label="Escopo negociado">
           {deal.description === null ? (
-            <Empty />
+            <NotInformed />
           ) : (
             <span className="whitespace-pre-wrap">{deal.description}</span>
           )}
@@ -109,7 +96,7 @@ const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
  * "como eu falo com essa pessoa agora?", e `tel:` e `mailto:` são a resposta com
  * um clique a menos — no celular, com nenhum.
  */
-const LeadDossier = ({ deal }: { readonly deal: DealDetail }) => (
+const LeadDossierCard = ({ deal }: { readonly deal: DealDetail }) => (
   <section className="rounded-card bg-surface-800/60 p-4 ring-1 ring-surface-700">
     <h3 className="text-sm font-semibold text-ink">Dossiê do cliente</h3>
 
@@ -120,7 +107,7 @@ const LeadDossier = ({ deal }: { readonly deal: DealDetail }) => (
       </Definition>
 
       <Definition label="Cargo">
-        {deal.lead.jobTitle === null ? <Empty /> : deal.lead.jobTitle}
+        {deal.lead.jobTitle === null ? <NotInformed /> : deal.lead.jobTitle}
       </Definition>
 
       <Definition label="Telefone">
@@ -194,10 +181,10 @@ export const DealDetailModal = ({ dealId, onClose }: DealDetailModalProps) => {
               carregamento dos dados atrasaria o dossiê — que é justamente o que
               alguém abre o modal com pressa para ler.
             */}
-            <DealTimeline dealId={dealId} />
+            <DealTimelineSection dealId={dealId} />
           </div>
 
-          <LeadDossier deal={deal.data} />
+          <LeadDossierCard deal={deal.data} />
         </div>
       )}
     </Modal>

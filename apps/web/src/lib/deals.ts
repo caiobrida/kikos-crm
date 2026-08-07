@@ -97,15 +97,15 @@ export const useBoard = (view: BoardView) =>
  * carregamento, sem piscada — e há **um** cache a invalidar quando alguém
  * comenta, em vez de dois que podem discordar.
  *
- * `id` opcional porque a tela pergunta antes de haver negócio escolhido: sem
- * card selecionado e sem `:dealId` na URL, não há o que carregar. `enabled` é
- * o que impede a consulta de sair nesse estado.
+ * O `id` é obrigatório porque quem monta o painel e o modal só os monta com um
+ * negócio em mãos: sem card escolhido e sem `:dealId` na URL, nenhum dos dois
+ * chega a existir. Aceitar `undefined` aqui pediria um `enabled` para desligar
+ * uma consulta que ninguém faria.
  */
-export const useDeal = (id: string | undefined) =>
+export const useDeal = (id: string) =>
   useQuery({
     queryKey: [...detailQueryKey, id] as const,
-    queryFn: ({ signal }) => apiJson(DealDetail, `/deals/${id ?? ''}`, { signal }),
-    enabled: id !== undefined,
+    queryFn: ({ signal }) => apiJson(DealDetail, `/deals/${id}`, { signal }),
   });
 
 export interface ColumnPages {

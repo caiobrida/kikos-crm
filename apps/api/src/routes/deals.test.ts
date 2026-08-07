@@ -2,12 +2,11 @@ import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_STAGES,
   DealBoard,
-  DealDetail,
+  type DealDetail,
   DealListItem,
   DealPage,
   DealSortBy,
   LeadListItem,
-  LeadPage,
   STAGE_MOVE_REFUSALS,
   type DealBoardColumn,
   type DealStage,
@@ -25,6 +24,7 @@ import {
   makeTestHarness,
   type TestHarness,
 } from '../testing/harness';
+import * as read from '../testing/reads';
 
 /*
  * O contrato de `GET /deals/board` e `GET /deals`, exercitado pela pilha
@@ -74,33 +74,17 @@ const totalsOf = (deals: DealBoard): readonly number[] =>
 const titlesIn = (page: DealPage): readonly string[] =>
   page.data.map((deal) => deal.title);
 
-/**
- * Um contato da carteira, achado do mesmo jeito que a tela o acha: pela busca
- * da lista de Leads. É assim que o formulário de negócio descobre o
- * identificador que vai no corpo — e é por isso que o teste não vai buscá-lo na
- * fixture.
+/*
+ * As leituras por identificador vêm de `testing/reads`, compartilhadas com os
+ * outros arquivos de teste: o contato é achado pela busca da lista de Leads —
+ * como o formulário de negócio o acha — e o negócio pelo próprio card do board.
+ * Um teste que fosse buscar o identificador na fixture passaria mesmo com a
+ * consulta quebrada.
  */
-const leadNamed = async (name: string): Promise<LeadListItem> => {
-  const response = await harness.get(`/leads?search=${encodeURIComponent(name)}`);
-  expect(response.statusCode).toBe(200);
+const leadNamed = (name: string): Promise<LeadListItem> => read.leadNamed(harness, name);
 
-  const lead = Schema.decodeUnknownSync(LeadPage)(response.json()).data.at(0);
-  if (lead === undefined) throw new Error(`O contato "${name}" não está na carteira.`);
-  return lead;
-};
-
-/**
- * Um negócio do funil, achado como o board o acha: pela busca. O identificador
- * que a tela usa para mover um card é o que veio no card, e não um que ela
- * conheça por outro caminho.
- */
-const dealNamed = async (title: string): Promise<DealListItem> => {
-  const page = await list(`?search=${encodeURIComponent(title)}`);
-
-  const deal = page.data.at(0);
-  if (deal === undefined) throw new Error(`O negócio "${title}" não está no funil.`);
-  return deal;
-};
+const dealNamed = (title: string): Promise<DealListItem> =>
+  read.dealNamed(harness, title);
 
 describe('GET /deals/board', () => {
   describe('o funil', () => {
@@ -399,12 +383,8 @@ describe('GET /deals/:id', () => {
     deal = await dealNamed(DEAL_TITLE);
   });
 
-  const detailOf = async (id: string = deal.id): Promise<DealDetail> => {
-    const response = await harness.get(`/deals/${id}`);
-
-    expect(response.statusCode).toBe(200);
-    return Schema.decodeUnknownSync(DealDetail)(response.json());
-  };
+  const detailOf = (id: string = deal.id): Promise<DealDetail> =>
+    read.dealDetail(harness, id);
 
   it('recusa quem não está logado', async () => {
     const response = await harness.app.inject({

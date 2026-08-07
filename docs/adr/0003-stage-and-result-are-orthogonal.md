@@ -12,6 +12,12 @@ como ganho ou perdido, e uma vez fechado o Deal é terminal.
   Um `PATCH` de stage para `CLOSED` falha com `InvalidStageTransition`.
 - Qualquer escrita em um Deal fechado (mover, editar, fechar de novo) falha com
   `DealAlreadyClosed`. Reabrir negócio não existe.
+- **A recusa é sobre mudar o que foi registrado, não sobre acrescentar ao histórico.** Comentar
+  num Deal fechado é permitido, e leva junto a `lastInteractionAt` do Deal e do Lead — é a regra
+  da "Última interação" do spec, que lista comentário como um dos eventos. Sem isso ninguém
+  poderia anotar por que a venda foi perdida, que é justamente o que se quer ler depois. A
+  fronteira: as três escritas acima mudam o desfecho de um negócio encerrado; um comentário só
+  registra que alguém voltou a falar dele.
 - O estado `stage = CLOSED, result = OPEN` é inalcançável, então a coluna Fechado sempre sabe
   pintar cada card de verde ou vermelho.
 - A regra de transição é uma função pura no pacote compartilhado, então o frontend recusa o

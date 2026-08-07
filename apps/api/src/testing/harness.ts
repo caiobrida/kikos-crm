@@ -3,6 +3,7 @@ import {
   DealId,
   LeadId,
   UserId,
+  stageMoveRecord,
   type CommentKind,
   type DealResult,
   type DealStage,
@@ -410,7 +411,10 @@ const COMMENT_FIXTURES: readonly CommentFixture[] = [
   {
     deal: 'Esteiras para a sala principal',
     kind: 'SYSTEM',
-    body: 'Estágio alterado de Contato feito para Novo.',
+    /* Pela mesma função que a rota de movimentação usa, e não escrito à mão: a
+       fixture não pode ser o lugar onde a frase do registro de sistema começa a
+       divergir do que o produto grava. */
+    body: stageMoveRecord('CONTACT_MADE', 'NEW'),
     author: 'manager',
     createdAt: '2026-05-20T09:00:00.000Z',
   },

@@ -1,9 +1,11 @@
+import { cn } from '../lib/cn';
 import { formatLastInteraction } from '../lib/dates';
 import { useDeal } from '../lib/deals';
 import { formatBRL } from '../lib/money';
 import { Avatar } from '../ui/Avatar';
 import { DealStageBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Definition } from '../ui/Definition';
 
 /*
  * O painel lateral do board: o resumo de um negócio, sem tirar o vendedor do
@@ -12,18 +14,36 @@ import { Button } from '../ui/Button';
  * **Ele é enxuto e só de leitura**, e as duas coisas são a mesma decisão. O
  * painel mostra título, valor, selo de estágio, o Lead, o responsável e a última
  * interação — e um botão. Nada mais: a linha do tempo, o dossiê e as ações
- * ficam no detalhamento. Como o painel não age, não há lógica duplicada entre
- * ele e o modal, e não há um segundo cache para invalidar quando alguém escreve.
+ * ficam no detalhamento. Como o painel não **age**, não há comportamento
+ * duplicado entre ele e o modal, e não há um segundo cache para invalidar quando
+ * alguém escreve. O que os dois compartilham de desenho — o par rótulo/valor —
+ * é o mesmo componente (`Definition`), e não duas cópias.
  *
  * Ele **não é um `<dialog>`**, e isso também é deliberado: o board continua
  * utilizável com o painel aberto — dá para arrastar um card, buscar, trocar o
  * filtro. Um modal tornaria o resto da página inerte, que é exatamente o oposto
- * de "consultar o essencial sem sair do board".
+ * de "consultar o essencial sem sair do board". Para que isso seja verdade e não
+ * só intenção, quem monta o painel afasta o board da faixa que ele ocupa (ver
+ * `PANEL_WIDTH`); senão a última coluna do funil ficaria permanentemente
+ * embaixo dele.
  *
  * O painel não tem endereço próprio: quem tem é o modal. Um painel na URL
  * encheria o histórico do navegador de estados intermediários, e o botão voltar
  * passaria a desfazer cliques em card em vez de fechar o detalhamento.
  */
+
+/**
+ * A largura do painel, e a folga que o board precisa deixar por baixo dele.
+ *
+ * As duas classes moram juntas de propósito: são o mesmo número escrito de dois
+ * jeitos (`max-w-sm` são 24rem, e o board já tem 2rem de respiro de cada lado),
+ * e separá-las é como a última coluna do funil acabaria escondida no dia em que
+ * alguém alargasse o painel.
+ */
+export const PANEL_WIDTH = 'w-full max-w-sm';
+
+/** O afastamento que o board aplica enquanto o painel está aberto. */
+export const PANEL_CLEARANCE = 'sm:pr-[26rem]';
 
 export interface DealPanelProps {
   readonly dealId: string;
@@ -40,10 +60,11 @@ export const DealPanel = ({ dealId, onClose, onOpenDetail }: DealPanelProps) => 
   return (
     <aside
       aria-label="Resumo do negócio"
-      className={
-        'fixed inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l ' +
-        'border-surface-700 bg-surface-900 shadow-2xl'
-      }
+      className={cn(
+        'fixed inset-y-0 right-0 z-20 flex flex-col border-l border-surface-700',
+        'bg-surface-900 shadow-2xl',
+        PANEL_WIDTH,
+      )}
     >
       <header className="flex items-start justify-between gap-4 border-b border-surface-700 px-5 py-4">
         <h2 className="text-sm font-semibold text-ink">
@@ -69,44 +90,33 @@ export const DealPanel = ({ dealId, onClose, onOpenDetail }: DealPanelProps) => 
           <p className="text-sm text-ink-faint">Carregando…</p>
         ) : (
           <dl className="flex flex-col gap-5">
-            <div>
-              <dt className="text-xs text-ink-faint">Valor estimado</dt>
-              <dd className="mt-0.5 text-xl font-semibold text-brand-300">
+            <Definition label="Valor estimado">
+              <span className="text-xl font-semibold text-brand-300">
                 {formatBRL(deal.data.valueInCents)}
-              </dd>
-            </div>
+              </span>
+            </Definition>
 
-            <div>
-              <dt className="text-xs text-ink-faint">Estágio</dt>
-              <dd className="mt-1">
-                <DealStageBadge stage={deal.data.stage} />
-              </dd>
-            </div>
+            <Definition label="Estágio">
+              <DealStageBadge stage={deal.data.stage} />
+            </Definition>
 
-            <div>
-              <dt className="text-xs text-ink-faint">Lead</dt>
-              <dd className="mt-0.5 text-sm text-ink">
-                {deal.data.lead.name}
-                <span className="block text-xs text-ink-muted">
-                  {deal.data.lead.company}
-                </span>
-              </dd>
-            </div>
+            <Definition label="Lead">
+              {deal.data.lead.name}
+              <span className="block text-xs text-ink-muted">
+                {deal.data.lead.company}
+              </span>
+            </Definition>
 
-            <div>
-              <dt className="text-xs text-ink-faint">Vendedor responsável</dt>
-              <dd className="mt-1 flex items-center gap-2 text-sm text-ink">
+            <Definition label="Vendedor responsável">
+              <span className="flex items-center gap-2">
                 <Avatar name={deal.data.owner.name} size="sm" />
                 {deal.data.owner.name}
-              </dd>
-            </div>
+              </span>
+            </Definition>
 
-            <div>
-              <dt className="text-xs text-ink-faint">Última interação</dt>
-              <dd className="mt-0.5 text-sm text-ink">
-                {formatLastInteraction(deal.data.lastInteractionAt)}
-              </dd>
-            </div>
+            <Definition label="Última interação">
+              {formatLastInteraction(deal.data.lastInteractionAt)}
+            </Definition>
           </dl>
         )}
       </div>

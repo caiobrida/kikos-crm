@@ -26,22 +26,17 @@ const timelineQueryKey = [...dealsQueryKey, 'comments'] as const;
  * A ordem vem do servidor, e a tela não a refaz: um `sort` no navegador seria o
  * segundo lugar em que "mais recente primeiro" estaria escrito, e o primeiro a
  * discordar do outro no dia em que dois registros caírem no mesmo instante.
- *
- * Como no detalhamento, `id` é opcional porque a tela pergunta antes de haver
- * negócio aberto.
  */
-export const useDealTimeline = (id: string | undefined) =>
+export const useDealTimeline = (id: string) =>
   useQuery({
     queryKey: [...timelineQueryKey, id] as const,
-    queryFn: ({ signal }) =>
-      apiJson(DealTimeline, `/deals/${id ?? ''}/comments`, { signal }),
-    enabled: id !== undefined,
+    queryFn: ({ signal }) => apiJson(DealTimeline, `/deals/${id}/comments`, { signal }),
   });
 
 /**
  * Escreve um comentário no negócio.
  *
- * As três invalidações são as três coisas que comentar mexe, e nenhuma delas é
+ * As duas invalidações cobrem tudo que comentar mexe, e nenhuma delas é
  * opcional:
  *
  * - **o prefixo de Deal** derruba de uma vez a linha do tempo (o registro novo),

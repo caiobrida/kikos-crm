@@ -1,11 +1,9 @@
 import {
   Comment,
-  DealDetail,
-  DealListItem,
-  DealPage,
-  DealTimeline,
-  LeadListItem,
-  LeadPage,
+  type DealDetail,
+  type DealListItem,
+  type DealTimeline,
+  type LeadListItem,
   stageMoveRecord,
   type DealStage,
 } from '@kikos/domain';
@@ -19,6 +17,7 @@ import {
   makeTestHarness,
   type TestHarness,
 } from '../testing/harness';
+import * as read from '../testing/reads';
 
 /*
  * O contrato da linha do tempo: `GET /deals/:id/comments` e
@@ -45,39 +44,19 @@ afterEach(async () => {
   await harness.close();
 });
 
-/** Um negócio do funil, achado como o board o acha: pela busca. */
-const dealNamed = async (title: string): Promise<DealListItem> => {
-  const response = await harness.get(`/deals?search=${encodeURIComponent(title)}`);
-  expect(response.statusCode).toBe(200);
+/*
+ * As leituras vêm de `testing/reads`, compartilhadas com os outros arquivos de
+ * teste. Elas recebem o harness porque ele é recriado a cada teste; os apelidos
+ * abaixo evitam repetir esse argumento em cada asserção.
+ */
+const dealNamed = (title: string): Promise<DealListItem> =>
+  read.dealNamed(harness, title);
 
-  const deal = Schema.decodeUnknownSync(DealPage)(response.json()).data.at(0);
-  if (deal === undefined) throw new Error(`O negócio "${title}" não está no funil.`);
-  return deal;
-};
+const detailOf = (id: string): Promise<DealDetail> => read.dealDetail(harness, id);
 
-/** O negócio inteiro, como o painel e o modal o leem. */
-const detailOf = async (id: string): Promise<DealDetail> => {
-  const response = await harness.get(`/deals/${id}`);
-  expect(response.statusCode).toBe(200);
-  return Schema.decodeUnknownSync(DealDetail)(response.json());
-};
+const timelineOf = (id: string): Promise<DealTimeline> => read.dealTimeline(harness, id);
 
-/** A linha do tempo, decodificada com o Schema compartilhado. */
-const timelineOf = async (id: string): Promise<DealTimeline> => {
-  const response = await harness.get(`/deals/${id}/comments`);
-  expect(response.statusCode).toBe(200);
-  return Schema.decodeUnknownSync(DealTimeline)(response.json());
-};
-
-/** Um contato da carteira, achado do mesmo jeito que a tela o acha. */
-const leadNamed = async (name: string): Promise<LeadListItem> => {
-  const response = await harness.get(`/leads?search=${encodeURIComponent(name)}`);
-  expect(response.statusCode).toBe(200);
-
-  const lead = Schema.decodeUnknownSync(LeadPage)(response.json()).data.at(0);
-  if (lead === undefined) throw new Error(`O contato "${name}" não está na carteira.`);
-  return lead;
-};
+const leadNamed = (name: string): Promise<LeadListItem> => read.leadNamed(harness, name);
 
 describe('GET /deals/:id/comments', () => {
   /** O negócio que já nasce com histórico. Está em Novo, do contato Ana Beatriz. */

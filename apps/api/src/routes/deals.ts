@@ -31,6 +31,7 @@ import { decodeBody, decodeParams, decodeQuery } from '../http/validation';
 import { CommentRepository } from '../repositories/CommentRepository';
 import {
   DealRepository,
+  type DealRecord,
   type DealWithDossier,
   type DealWithRelations,
 } from '../repositories/DealRepository';
@@ -187,6 +188,36 @@ const createDeal = (
 const DealIdParams = Schema.Struct({ id: DealId });
 
 /**
+ * O negócio de identificador `id`, ou a recusa que a tela sabe explicar.
+ *
+ * Toda rota que age sobre um negócio pelo identificador da URL começa por aqui,
+ * e é por isso que ela mora num lugar só: a frase da recusa é a mesma nas três,
+ * e o filtro de remoção lógica que a produz vive uma camada abaixo, no
+ * repositório. É exportada porque a linha do tempo (`comments.ts`) faz a mesma
+ * pergunta antes de ler ou escrever — um comentário pertence a um negócio, e um
+ * negócio que não existe não recebe histórico.
+ *
+ * Devolve a linha crua, e não o detalhamento: quem chama daqui vai **escrever**,
+ * e precisa saber em que coluna o negócio está de verdade, não o dossiê do
+ * cliente. Quem quer desenhar a tela usa `detailById`.
+ */
+export const requireDeal = (
+  id: DealId,
+): Effect.Effect<DealRecord, DealNotFound, DealRepository> =>
+  Effect.gen(function* () {
+    const deals = yield* DealRepository;
+    const found = yield* deals.findById(id);
+
+    if (Option.isNone(found)) {
+      return yield* Effect.fail(
+        new DealNotFound({ message: 'Este negócio não existe mais.' }),
+      );
+    }
+
+    return found.value;
+  });
+
+/**
  * Abre um negócio — a consulta que o painel lateral e o modal compartilham.
  *
  * **Uma consulta para as duas telas, e não duas.** O painel usa a parte de cima
@@ -271,16 +302,7 @@ const moveDealStage = (
   DealRepository | LeadRepository | CommentRepository
 > =>
   Effect.gen(function* () {
-    const deals = yield* DealRepository;
-    const found = yield* deals.findById(id);
-
-    if (Option.isNone(found)) {
-      return yield* Effect.fail(
-        new DealNotFound({ message: 'Este negócio não existe mais.' }),
-      );
-    }
-
-    const deal = found.value;
+    const deal = yield* requireDeal(id);
     const refusal = refuseStageMove(deal.stage, input.stage);
 
     if (refusal !== undefined) return yield* Effect.fail(stageMoveError(refusal));
@@ -299,6 +321,7 @@ const moveDealStage = (
     // é o que um teste troca por `TestClock` quando precisa parar o tempo.
     const now = new Date(yield* Clock.currentTimeMillis);
 
+    const deals = yield* DealRepository;
     const moved = yield* deals.moveToStage(id, { stage: input.stage, at: now });
 
     /*

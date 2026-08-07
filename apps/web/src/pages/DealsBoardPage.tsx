@@ -7,6 +7,7 @@ import {
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ApiError } from '../lib/api';
+import { cn } from '../lib/cn';
 import {
   INITIAL_BOARD_VIEW,
   boardViewKey,
@@ -22,7 +23,7 @@ import { OwnerFilter } from '../ui/OwnerFilter';
 import { BoardColumn } from './BoardColumn';
 import { CreateDealModal } from './CreateDealModal';
 import { DealDetailModal } from './DealDetailModal';
-import { DealPanel } from './DealPanel';
+import { DealPanel, PANEL_CLEARANCE } from './DealPanel';
 
 /*
  * O board de Negócios.
@@ -153,7 +154,12 @@ export const DealsBoardPage = () => {
   const total = columns?.reduce((sum, column) => sum + column.total, 0);
 
   return (
-    <div className="px-8 py-10">
+    /*
+      O painel é fixo na direita, então o board se afasta enquanto ele está
+      aberto. Sem isso a coluna Fechado ficaria permanentemente por baixo dele —
+      e "o board continua utilizável com o painel aberto" seria só uma frase.
+    */
+    <div className={cn('px-8 py-10', summarized === undefined ? '' : PANEL_CLEARANCE)}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-ink">Negócios</h1>

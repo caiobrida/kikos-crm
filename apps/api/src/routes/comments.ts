@@ -4,10 +4,9 @@ import {
   DealId,
   DealNotFound,
   DealTimeline,
-  type LeadId,
   type UserId,
 } from '@kikos/domain';
-import { Clock, Effect, Option, Schema } from 'effect';
+import { Clock, Effect, Schema } from 'effect';
 import type { FastifyInstance } from 'fastify';
 import { makeAuthenticate, requireCurrentUser } from '../http/authenticate';
 import { makeRunner } from '../http/run';
@@ -19,6 +18,7 @@ import {
 import { DealRepository } from '../repositories/DealRepository';
 import { LeadRepository } from '../repositories/LeadRepository';
 import type { AppRuntime } from '../runtime';
+import { requireDeal } from './deals';
 
 /*
  * A linha do tempo de um negócio.
@@ -37,30 +37,14 @@ import type { AppRuntime } from '../runtime';
 /** O `:id` do caminho, conferido pelo mesmo mecanismo que confere um corpo. */
 const DealIdParams = Schema.Struct({ id: DealId });
 
-/**
- * O negócio existe, e ainda existe para quem lê?
- *
- * As duas rotas começam por esta pergunta, e é ela que separa "este negócio não
- * tem histórico" de "este negócio não existe": sem ela, um identificador
- * inventado devolveria uma lista vazia com 200, e um comentário enviado para
- * ele gravaria um registro órfão que nenhuma tela jamais mostraria. O filtro de
- * remoção lógica vem junto, porque mora no repositório.
+/*
+ * As duas rotas começam confirmando que o negócio existe (`requireDeal`, na
+ * rota de Deal), e é essa pergunta que separa "este negócio não tem histórico"
+ * de "este negócio não existe": sem ela, um identificador inventado devolveria
+ * uma lista vazia com 200, e um comentário enviado para ele gravaria um registro
+ * órfão que nenhuma tela jamais mostraria. O filtro de remoção lógica vem junto,
+ * porque mora no repositório.
  */
-const requireDeal = (
-  id: DealId,
-): Effect.Effect<{ readonly leadId: LeadId }, DealNotFound, DealRepository> =>
-  Effect.gen(function* () {
-    const deals = yield* DealRepository;
-    const found = yield* deals.findById(id);
-
-    if (Option.isNone(found)) {
-      return yield* Effect.fail(
-        new DealNotFound({ message: 'Este negócio não existe mais.' }),
-      );
-    }
-
-    return { leadId: found.value.leadId };
-  });
 
 /** A linha do tempo, do mais recente para o mais antigo. */
 const readTimeline = (

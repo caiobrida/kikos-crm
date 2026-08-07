@@ -51,3 +51,23 @@ A camada de comentários deve ficar isolada e fácil de consumir — é onde a i
 pluga numa fase futura.
 
 Seed com comentários na linha do tempo, reproduzindo os mockups.
+
+## Decisões tomadas durante a implementação
+
+**A linha do tempo não usa o envelope `{ data, page, pageSize, total }`.** Ela é uma lista pura,
+e é a segunda exceção à regra "toda listagem é paginada" — a primeira é o board. O motivo: o
+histórico de um negócio é curto por natureza e é lido inteiro, porque a pergunta que se faz ao
+abrir o detalhamento é "o que já rolou aqui?", não "o que rolou nos últimos dez eventos". O
+próprio contrato HTTP do spec já a lista sem parâmetro nenhum, ao contrário de todas as outras.
+Se o volume mudar isso, `Paginated` já existe e a troca é local.
+
+**`DEAL_STAGE_LABELS` desceu do app web para o pacote compartilhado.** O rótulo de estágio
+deixou de ser só interface no instante em que o registro de sistema passou a gravar a frase
+pronta no banco: é o servidor quem a escreve. A fronteira do pacote compartilhado, como o spec a
+descreve, não previa mapa de rótulo — mas duplicá-lo deixaria o cabeçalho de uma coluna e o
+histórico de um negócio chamando o mesmo estágio por dois nomes. O resto do vocabulário de
+interface continua em `labels.ts`, que re-exporta este.
+
+**Comentar num negócio encerrado é permitido**, e atualiza a última interação. Ver a consequência
+acrescentada ao ADR-0003: a recusa de escrita em negócio fechado é sobre mudar o desfecho, não
+sobre acrescentar ao histórico.
