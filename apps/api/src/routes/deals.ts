@@ -1,22 +1,30 @@
 import {
   CreateDealInput,
+  DealAlreadyClosed,
   DealBoard,
   DealBoardQuery,
+  DealId,
   DealListItem,
   DealListQuery,
+  DealNotFound,
   DealPage,
   InvalidStageTransition,
   LEAD_STATUS_AFTER_DEAL_CREATED,
   LeadNotFound,
+  MoveDealStageInput,
   OwnerNotFound,
+  STAGE_MOVE_REFUSALS,
   isOpenDealStage,
+  leadStatusAfterDealMoved,
+  refuseStageMove,
   type DealBoardColumn,
+  type StageMoveRefusal,
 } from '@kikos/domain';
 import { Clock, Effect, Option, Schema } from 'effect';
 import type { FastifyInstance } from 'fastify';
 import { makeAuthenticate } from '../http/authenticate';
 import { makeRunner } from '../http/run';
-import { decodeBody, decodeQuery } from '../http/validation';
+import { decodeBody, decodeParams, decodeQuery } from '../http/validation';
 import { DealRepository, type DealWithRelations } from '../repositories/DealRepository';
 import { LeadRepository } from '../repositories/LeadRepository';
 import { UserRepository } from '../repositories/UserRepository';
@@ -161,6 +169,114 @@ const createDeal = (
     return deal;
   });
 
+/**
+ * O `:id` do caminho, conferido pelo mesmo mecanismo que confere um corpo.
+ *
+ * O identificador chega como texto vindo de fora, e é este Schema que devolve o
+ * `DealId` **com marca** — a única forma de produzir um (ver `ids.ts`). Um `id`
+ * malformado vira 400 com o campo apontado, e não uma consulta ao banco.
+ */
+const DealIdParams = Schema.Struct({ id: DealId });
+
+/** A recusa da regra pura, como o erro de domínio que a rota devolve. */
+const stageMoveError = (
+  refusal: StageMoveRefusal,
+): InvalidStageTransition | DealAlreadyClosed => {
+  /*
+   * A frase é a mesma que o navegador mostra ao recusar o drop: ela vem do
+   * pacote compartilhado, junto da regra. O `switch` existe só para escolher a
+   * tag — e é ele que faz uma recusa nova nascida na regra quebrar o typecheck
+   * aqui, em vez de escapar sem status HTTP.
+   */
+  const message = STAGE_MOVE_REFUSALS[refusal];
+
+  switch (refusal) {
+    case 'DealAlreadyClosed':
+      return new DealAlreadyClosed({ message });
+    case 'InvalidStageTransition':
+      return new InvalidStageTransition({ message });
+  }
+};
+
+/**
+ * Move um negócio de coluna.
+ *
+ * **A regra que decide o movimento não é desta rota.** Ela é a mesma função
+ * pura que o board consulta antes de aceitar o drop (`refuseStageMove`, no
+ * pacote compartilhado), e é esse compartilhamento que garante que o card que o
+ * navegador recusa é exatamente o que a API recusaria. O que sobra para cá são
+ * as três coisas que só o servidor sabe ou pode fazer:
+ *
+ * 1. **o negócio ainda existe, e em que coluna ele está de verdade?** O board
+ *    da tela é de um instante atrás; outra pessoa pode ter movido ou removido o
+ *    card nesse meio-tempo.
+ * 2. **escrever o movimento junto da última interação**, que é o que faz o card
+ *    subir para o topo da coluna de destino.
+ * 3. **sincronizar o contato vinculado**: o status do Lead acompanha o
+ *    movimento, com a regra "último evento vence".
+ *
+ * As duas escritas não compartilham transação, pelo mesmo motivo do cadastro: a
+ * seam de teste está acima dos repositórios. O pior caso é um negócio movido
+ * com o status do contato um passo atrás, e a próxima ação sobre o Deal o
+ * corrige.
+ */
+const moveDealStage = (
+  id: DealId,
+  input: MoveDealStageInput,
+): Effect.Effect<
+  DealWithRelations,
+  DealNotFound | InvalidStageTransition | DealAlreadyClosed,
+  DealRepository | LeadRepository
+> =>
+  Effect.gen(function* () {
+    const deals = yield* DealRepository;
+    const found = yield* deals.findById(id);
+
+    if (Option.isNone(found)) {
+      return yield* Effect.fail(
+        new DealNotFound({ message: 'Este negócio não existe mais.' }),
+      );
+    }
+
+    const deal = found.value;
+    const refusal = refuseStageMove(deal.stage, input.stage);
+
+    if (refusal !== undefined) return yield* Effect.fail(stageMoveError(refusal));
+
+    /*
+     * O destino é um dos quatro abertos — é o que a regra acabou de garantir —,
+     * mas o compilador não acompanha essa dedução através da recusa. O type
+     * guard o diz de novo, e o `else` é inalcançável: o próprio
+     * `refuseStageMove` já teria recusado.
+     */
+    if (!isOpenDealStage(input.stage)) {
+      return yield* Effect.fail(stageMoveError('InvalidStageTransition'));
+    }
+
+    // A hora vem do `Clock` do Effect, como no cadastro: é serviço do runtime, e
+    // é o que um teste troca por `TestClock` quando precisa parar o tempo.
+    const now = new Date(yield* Clock.currentTimeMillis);
+
+    const moved = yield* deals.moveToStage(id, { stage: input.stage, at: now });
+
+    /*
+     * O contato é sincronizado em toda movimentação, mas nem toda movimentação
+     * mexe no selo: a regra devolve `undefined` quando o estágio de destino não
+     * é evento de status, e aí só a data anda. O campo é omitido em vez de ir
+     * como `undefined` porque `exactOptionalPropertyTypes` distingue as duas
+     * coisas — e aqui a distinção é justamente a que importa.
+     */
+    const status = leadStatusAfterDealMoved(input.stage);
+
+    const leads = yield* LeadRepository;
+    yield* leads.recordLeadInteraction(deal.leadId, {
+      at: now,
+      ...(status === undefined ? {} : { status }),
+    });
+
+    return moved;
+  });
+
 export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): void => {
   const run = makeRunner(runtime);
   const authenticate = makeAuthenticate(runtime);
@@ -204,6 +320,29 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
        * o funil já com o negócio na coluna certa.
        */
       reply.status(201).send(Schema.encodeSync(DealListItem)(deal)),
+    );
+  });
+
+  /*
+   * `PATCH`, e não `PUT`: o corpo é a coluna de destino, não o negócio inteiro.
+   * Mover é uma ação sobre um registro que já existe, e o sub-recurso no
+   * caminho (`/stage`) é o que deixa a rota de edição livre para receber o
+   * formulário completo na fatia que a implementa.
+   */
+  app.patch('/deals/:id/stage', { preHandler: authenticate }, (request, reply) => {
+    const program = Effect.all([
+      decodeParams(DealIdParams, request.params),
+      decodeBody(MoveDealStageInput, request.body),
+    ]).pipe(Effect.flatMap(([params, input]) => moveDealStage(params.id, input)));
+
+    return run(reply, program, (reply, deal) =>
+      /*
+       * O card no mesmo Schema do board. A tela não o usa para redesenhar a
+       * coluna à mão — ela já mostrou o movimento no instante do gesto e
+       * invalida o cache depois; o corpo é o que confirma o que o servidor de
+       * fato registrou.
+       */
+      reply.send(Schema.encodeSync(DealListItem)(deal)),
     );
   });
 };

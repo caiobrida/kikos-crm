@@ -49,16 +49,20 @@ O seed cria um gestor, três vendedores, catorze Leads e vinte e um Negócios. A
 Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
 carteira, com busca, filtros, ordenação e paginação, e o botão "Criar Novo Lead" que cadastra um
 contato. **Negócios** é o funil como board, com uma coluna por Stage, e o botão "Cadastrar Novo
-Negócio" que abre uma oportunidade sobre um contato da carteira; arrastar, abrir e encerrar
-chegam nas fatias seguintes, como Dashboard e Vendedores. A
+Negócio" que abre uma oportunidade sobre um contato da carteira; arrastar um card entre as
+colunas registra o avanço — ou o recuo — da negociação, e o seletor no rodapé do card faz o
+mesmo pelo teclado. Abrir e encerrar chegam nas fatias seguintes, como Dashboard e Vendedores. A
 **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
 variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
 `/api/health`, e se estiver verde o proxy e a API estão de pé.
 
 ## Consulta sempre no servidor
 
-Busca, filtro, ordenação e paginação acontecem no banco, sem exceção — não existe `filter`,
-`sort` nem `slice` sobre os dados em tela nenhuma. As listagens respondem
+Busca, filtro, ordenação e paginação acontecem no banco, sem exceção. Existe **um** `filter`
+sobre dados em tela em todo o app, e ele não é consulta: é a previsão otimista do card
+arrastado, em `apps/web/src/lib/board.ts`, desfeita assim que o servidor responde (ver
+["Uma função decide o drop e a rejeição"](#uma-função-decide-o-drop-e-a-rejeição)). As listagens
+respondem
 `{ data, page, pageSize, total }`, e é o `total` que alimenta o contador: ele descreve o recorte
 inteiro, não as linhas que couberam na página.
 
@@ -140,6 +144,41 @@ A segunda é a **sincronização do status do Lead**. Criar um negócio move o c
 para "Em contato" e atualiza a última interação dele, com a regra "último evento vence" do spec.
 É o que faz a lista de Leads e o board contarem a mesma história sem que ninguém precise
 atualizar duas telas na mão.
+
+### Uma função decide o drop e a rejeição
+
+`refuseStageMove`, em `packages/domain/src/pipeline.ts`, é o argumento mais concreto a favor do
+pacote compartilhado. Ela é pura, cabe em cinco linhas, e responde a uma pergunta só: este
+movimento existe no funil?
+
+```
+NEW ⇄ CONTACT_MADE ⇄ PROPOSAL_SENT ⇄ NEGOTIATION    livre nos dois sentidos
+move(qualquer, CLOSED) → InvalidStageTransition     422
+move(fechado, _)       → DealAlreadyClosed          409
+```
+
+**As duas pontas chamam esta mesma função.** No navegador, a coluna do board a consulta durante
+o arrasto: quando ela recusa, a coluna não chama `preventDefault` no `dragover` — e no
+arrasta-e-solta nativo isso significa que o drop **não acontece**. A recusa não é um `if` dentro
+do drop; é a ausência do drop, e nenhuma requisição chega a ser montada. No servidor, a rota a
+consulta antes de escrever, para quem enviar por fora da tela.
+
+Os dois nomes que ela devolve — `DealAlreadyClosed` e `InvalidStageTransition` — são as tags dos
+erros de domínio, e a frase que explica cada recusa mora ao lado da regra
+(`STAGE_MOVE_REFUSALS`). O aviso que aparece no board é, literalmente, o mesmo texto que a API
+devolveria: não existem duas explicações possíveis para a mesma recusa.
+
+Mover é também a **única escrita otimista do CRM**. O card muda de coluna no instante do gesto,
+antes da resposta, e o servidor confirma depois; se ele recusar, o cache volta ao retrato de
+antes e o card retorna à origem com o motivo à vista. As funções que fazem essa previsão
+(`apps/web/src/lib/board.ts`) são puras e testadas — é o único lugar em que a tela recorta
+dados, e um card duplicado ou um contador negativo ali duraria o tempo de uma requisição e
+ninguém conseguiria reproduzir depois.
+
+O card também se move por um `<select>` de estágio, e não só arrastando. Arrastar-e-soltar
+nativo não tem história de teclado nenhuma: sem essa segunda porta, a tela de Negócios ficaria
+inoperável para quem usa teclado ou leitor de tela. Ela foi construída primeiro, e o arrasto
+veio por cima.
 
 ## Estrutura
 
@@ -274,6 +313,20 @@ curl -s -b /tmp/kikos.txt -X POST localhost:3333/deals \
   -H 'Content-Type: application/json' \
   -d '{"title":"Teste 422","valueInCents":1000,"stage":"CLOSED",
        "leadId":"COLE_O_ID_DO_LEAD","ownerId":"COLE_O_ID_DO_VENDEDOR"}'
+
+# A movimentação, que na Layer de Prisma é um `update` com a cláusula de
+# remoção no `where`. Pegue o "id" de um negócio em aberto do board.
+curl -s -b /tmp/kikos.txt -X PATCH localhost:3333/deals/COLE_O_ID_DO_NEGOCIO/stage \
+  -H 'Content-Type: application/json' -d '{"stage":"PROPOSAL_SENT"}'
+# 200 com o card, e o Lead vinculado passa a "NEGOTIATION" em /leads
+
+# Arrastar para Fechado não existe: 422, e o negócio não sai do lugar.
+curl -s -b /tmp/kikos.txt -X PATCH localhost:3333/deals/COLE_O_ID_DO_NEGOCIO/stage \
+  -H 'Content-Type: application/json' -d '{"stage":"CLOSED"}'
+
+# Negócio encerrado não se move: 409. Pegue um "id" da coluna Fechado.
+curl -s -b /tmp/kikos.txt -X PATCH localhost:3333/deals/COLE_O_ID_DO_FECHADO/stage \
+  -H 'Content-Type: application/json' -d '{"stage":"NEGOTIATION"}'
 ```
 
 ## Effect

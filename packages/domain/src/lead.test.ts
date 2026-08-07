@@ -1,7 +1,12 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Either, Schema } from 'effect';
+import { OPEN_DEAL_STAGES } from './enums';
 import { toValidationIssues } from './errors';
-import { CreateLeadInput } from './lead';
+import {
+  CreateLeadInput,
+  LEAD_STATUS_AFTER_DEAL_CREATED,
+  leadStatusAfterDealMoved,
+} from './lead';
 
 /*
  * O Schema de cadastro de Lead é puro, então vale o `it` comum — sem Layer, sem
@@ -163,5 +168,48 @@ describe('CreateLeadInput', () => {
       // erro a cada tentativa de salvar.
       expect([...issues.keys()].sort()).toEqual(['company', 'email', 'name']);
     });
+  });
+});
+
+/*
+ * A outra regra pura desta fatia: o status que o contato assume quando um
+ * negócio dele muda de estágio.
+ *
+ * Ela é o que faz a lista de Leads e o board contarem a mesma história — mover
+ * um card muda o selo da carteira sem que ninguém atualize duas telas na mão.
+ */
+describe('leadStatusAfterDealMoved', () => {
+  it('leva o contato para Em negociação quando a proposta saiu', () => {
+    expect(leadStatusAfterDealMoved('PROPOSAL_SENT')).toBe('NEGOTIATION');
+    expect(leadStatusAfterDealMoved('NEGOTIATION')).toBe('NEGOTIATION');
+  });
+
+  it('não mexe no selo quando o negócio anda no começo do funil', () => {
+    /*
+     * A tabela do spec tem uma linha só para movimentação, e estes dois
+     * estágios não estão nela. O `undefined` é essa ausência dita em voz alta:
+     * o movimento vale como interação — a data anda —, mas não é evento de
+     * status.
+     *
+     * Um Lead tem vários Deals. Se recuar rebaixasse o contato para Em contato,
+     * um negócio andando para trás desfaria o Ganho registrado por **outro**.
+     */
+    expect(leadStatusAfterDealMoved('NEW')).toBeUndefined();
+    expect(leadStatusAfterDealMoved('CONTACT_MADE')).toBeUndefined();
+  });
+
+  it('não repete o status com que o contato nasce ao ganhar um negócio', () => {
+    // Criar um negócio é evento de status (`CONTACT`); movê-lo para o mesmo
+    // estágio não é. As duas regras existem separadas por isso.
+    expect(LEAD_STATUS_AFTER_DEAL_CREATED).toBe('CONTACT');
+    expect(leadStatusAfterDealMoved('NEW')).not.toBe(LEAD_STATUS_AFTER_DEAL_CREATED);
+  });
+
+  it('responde a todos os estágios abertos', () => {
+    // Um estágio novo no funil precisa passar por aqui para decidir se é evento
+    // de status ou não, em vez de cair num caso que ninguém escreveu.
+    for (const stage of OPEN_DEAL_STAGES) {
+      expect(() => leadStatusAfterDealMoved(stage)).not.toThrow();
+    }
   });
 });

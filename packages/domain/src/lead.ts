@@ -10,6 +10,7 @@ import {
   SearchTerm,
   SortOrder,
 } from './pagination';
+import type { OpenDealStage } from './pipeline';
 import { OptionalText, RequiredText } from './text';
 import { Email, UserSummary } from './user';
 
@@ -173,3 +174,26 @@ export type CreateLeadInputEncoded = typeof CreateLeadInput.Encoded;
  * lista de Leads divergir visivelmente do board.
  */
 export const LEAD_STATUS_AFTER_DEAL_CREATED: LeadStatus = 'CONTACT';
+
+/**
+ * O status que o Lead assume quando um Deal dele muda de estágio — ou
+ * `undefined`, quando o movimento não diz nada novo sobre o relacionamento.
+ *
+ * A tabela do spec tem **uma** linha para movimentação: negócio movido para
+ * Proposta enviada ou Negociação leva o contato para Em negociação. Os outros
+ * dois estágios abertos não aparecem nela, e o `undefined` é a leitura fiel
+ * disso: o movimento continua contando como interação — a data é atualizada —,
+ * mas não é evento de status, e o selo fica onde estava.
+ *
+ * A diferença não é sutil. Um Lead pode ter vários Deals, e "recuar devolve o
+ * contato para Em contato" rebaixaria um contato já marcado como Ganho só
+ * porque **outro** negócio dele andou para trás — desfazendo, sem que ninguém
+ * peça, o fechamento que a fatia 09 registra.
+ *
+ * Só os quatro estágios abertos entram: encerrar um negócio é outra ação, com
+ * outro status (Ganho ou Perdido), e ela chega na fatia que fecha o negócio.
+ * `OpenDealStage` no parâmetro é o que faz o compilador cobrar isso de quem
+ * chamar — a rota só tem esse tipo em mãos depois da regra de transição.
+ */
+export const leadStatusAfterDealMoved = (stage: OpenDealStage): LeadStatus | undefined =>
+  stage === 'PROPOSAL_SENT' || stage === 'NEGOTIATION' ? 'NEGOTIATION' : undefined;

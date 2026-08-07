@@ -1,5 +1,18 @@
+import {
+  STAGE_MOVE_REFUSALS,
+  refuseStageMove,
+  type DealListItem,
+  type DealStage,
+} from '@kikos/domain';
 import { useState } from 'react';
-import { INITIAL_BOARD_VIEW, boardViewKey, useBoard, type BoardView } from '../lib/deals';
+import { ApiError } from '../lib/api';
+import {
+  INITIAL_BOARD_VIEW,
+  boardViewKey,
+  useBoard,
+  useMoveDealStage,
+  type BoardView,
+} from '../lib/deals';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useSellers } from '../lib/sellers';
 import { Button } from '../ui/Button';
@@ -20,12 +33,29 @@ import { CreateDealModal } from './CreateDealModal';
  * abrem numa requisição só — "página 2 do board" não significa nada —, e é cada
  * coluna que carrega mais, sozinha, quando tem mais negócios do que coube na
  * primeira leva.
+ *
+ * O board é também o dono do arrasto. Três coisas moram aqui porque nenhuma
+ * coluna sozinha as saberia: **qual card está no ar** (a coluna de destino
+ * precisa saber de onde ele veio para consultar a regra), **como mover** (é uma
+ * mutação só, para qualquer coluna) e **o motivo do movimento que não
+ * aconteceu**, num aviso só.
+ *
+ * Esse aviso é para a recusa que **acontece** — a do servidor, depois que o
+ * card já pulou de coluna. A recusa que o navegador faz durante o arrasto não
+ * passa por aqui: ela é dita pela própria coluna que recusa, sobreposta, porque
+ * um aviso crescendo no topo da página deslocaria o board no meio do gesto.
  */
 
 const countLabel = (total: number): string => {
   if (total === 0) return 'Nenhum negócio';
   return total === 1 ? '1 negócio' : `${total} negócios`;
 };
+
+/** O que a recusa do servidor tem a dizer para quem arrastou o card. */
+const moveFailure = (error: unknown): string =>
+  error instanceof ApiError
+    ? error.message
+    : 'Não foi possível falar com o servidor. O card voltou para o lugar.';
 
 export const DealsBoardPage = () => {
   const [view, setView] = useState<BoardView>(INITIAL_BOARD_VIEW);
@@ -36,6 +66,44 @@ export const DealsBoardPage = () => {
    */
   const [isCreating, setIsCreating] = useState(false);
   const sellers = useSellers();
+
+  /** O card que está sendo arrastado, enquanto o gesto dura. */
+  const [dragging, setDragging] = useState<DealListItem>();
+  /** Por que o último movimento não aconteceu. Some assim que outro começa. */
+  const [refusal, setRefusal] = useState<string>();
+
+  const move = useMoveDealStage();
+
+  /**
+   * O movimento, venha ele do arrasto ou do seletor do card.
+   *
+   * A regra do funil é consultada **aqui também**, e não só na coluna que
+   * aceita o drop: é a mesma função, e é ela que garante que nenhum caminho da
+   * tela chegue a montar uma requisição que o servidor recusaria. Quando ela
+   * recusa, a API não é chamada — o motivo aparece e o card não sai do lugar.
+   */
+  const moveDeal = (deal: DealListItem, to: DealStage) => {
+    setDragging(undefined);
+
+    const refused = refuseStageMove(deal.stage, to);
+    if (refused !== undefined) {
+      setRefusal(STAGE_MOVE_REFUSALS[refused]);
+      return;
+    }
+
+    setRefusal(undefined);
+    move.mutate(
+      { deal, to },
+      // A volta do card é da mutação, que desfaz o cache; o que sobra para a
+      // tela é dizer por quê.
+      { onError: (error) => setRefusal(moveFailure(error)) },
+    );
+  };
+
+  const startDragging = (deal: DealListItem) => {
+    setRefusal(undefined);
+    setDragging(deal);
+  };
 
   /*
    * A busca digitada e a busca consultada são duas coisas diferentes: o campo
@@ -101,6 +169,29 @@ export const DealsBoardPage = () => {
         </p>
       ) : null}
 
+      {/*
+        O motivo da recusa, num lugar só. `role="alert"` porque ele responde a
+        um gesto que acabou de acontecer: quem usa leitor de tela precisa ouvir
+        que o card voltou, e por quê, sem ir procurar.
+      */}
+      {refusal === undefined ? null : (
+        <p
+          role="alert"
+          className="mb-4 flex items-start justify-between gap-3 rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
+        >
+          <span>{refusal}</span>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-my-1 shrink-0"
+            onClick={() => setRefusal(undefined)}
+          >
+            Entendi
+          </Button>
+        </p>
+      )}
+
       {columns === undefined ? null : (
         // O board rola na horizontal: cinco colunas não cabem em tela estreita,
         // e encolhê-las até caber é o que faz um card virar tarja ilegível.
@@ -116,6 +207,10 @@ export const DealsBoardPage = () => {
               key={`${column.stage}:${boardViewKey(query)}`}
               column={column}
               view={query}
+              dragging={dragging}
+              onMove={moveDeal}
+              onDragStart={startDragging}
+              onDragEnd={() => setDragging(undefined)}
             />
           ))}
         </div>

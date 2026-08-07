@@ -40,7 +40,16 @@ export const toHttpError = (error: DomainError): HttpError => {
 
     case 'OwnerNotFound':
     case 'LeadNotFound':
+    case 'DealNotFound':
       return { status: 404, body: { error: error._tag, message: error.message } };
+
+    /*
+     * 409: o pedido é legítimo, e o que impede é o estado em que o registro
+     * está — um conflito com o que já foi registrado. Negócio encerrado não
+     * aceita escrita, e reabrir não existe (ADR-0003).
+     */
+    case 'DealAlreadyClosed':
+      return { status: 409, body: { error: error._tag, message: error.message } };
 
     /*
      * 422, e não 400: a entrada está bem formada e o valor pertence ao

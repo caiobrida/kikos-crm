@@ -63,15 +63,18 @@ export type LeadWithOwner = Omit<
 export type NewLead = Omit<LeadRecord, 'id' | 'deletedAt'>;
 
 /**
- * O que uma ação de Deal escreve no Lead vinculado: o status novo e o momento
- * do acontecimento.
+ * O que uma ação de Deal escreve no Lead vinculado: o momento do acontecimento
+ * e, **quando for o caso**, o status novo.
  *
- * Os dois andam juntos de propósito — quem decide o status é o domínio, com a
- * regra "último evento vence", e a mesma ação é o que torna este o contato de
- * última interação mais recente da carteira (ver o verbete em CONTEXT.md).
+ * A data é obrigatória porque toda ação de Deal é interação, e é ela que torna
+ * este o contato mexido mais recentemente da carteira (ver o verbete "Última
+ * Interação" em CONTEXT.md). O status é opcional porque nem toda ação é evento
+ * de status: mover um negócio para Novo conta como interação e não diz nada
+ * sobre o relacionamento, e sobrescrever o selo ali apagaria o que outra ação
+ * registrou. Quem decide é o domínio, com a regra "último evento vence".
  */
 export interface LeadInteraction {
-  readonly status: LeadStatus;
+  readonly status?: LeadStatus;
   readonly at: Date;
 }
 
@@ -272,7 +275,9 @@ export const LeadRepositoryInMemory = (
               lead.id === id && lead.deletedAt === null
                 ? {
                     ...lead,
-                    status: interaction.status,
+                    // Sem status na interação, o selo fica onde está — o mesmo
+                    // que a coluna ausente do `data` do Prisma faz.
+                    status: interaction.status ?? lead.status,
                     lastInteractionAt: interaction.at,
                   }
                 : lead,

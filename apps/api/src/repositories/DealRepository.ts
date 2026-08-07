@@ -13,7 +13,7 @@ import {
   type UserId,
   type UserSummary,
 } from '@kikos/domain';
-import { Context, Effect, Layer, Ref, Schema } from 'effect';
+import { Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 import { randomUUID } from 'node:crypto';
 import type { LeadRecord } from './LeadRepository';
 import type { Slice } from './Slice';
@@ -74,6 +74,20 @@ export interface DealWithRelations {
  */
 export type NewDeal = Omit<DealRecord, 'id' | 'deletedAt'>;
 
+/**
+ * O que uma mudança de estágio escreve no negócio: a coluna de destino e o
+ * momento do movimento.
+ *
+ * Os dois andam juntos de propósito, como no `LeadInteraction`: mover é um
+ * acontecimento, e todo acontecimento avança a última interação. Separá-los
+ * abriria a porta para um movimento que não aparece na ordenação da coluna nem
+ * na carteira (ver o verbete "Última Interação" em CONTEXT.md).
+ */
+export interface DealStageMove {
+  readonly stage: DealStage;
+  readonly at: Date;
+}
+
 /** Uma coluna do board: a primeira leva de cards e o total real da coluna. */
 export interface DealColumn {
   readonly stage: DealStage;
@@ -119,12 +133,30 @@ export class DealRepository extends Context.Tag('DealRepository')<
     /** As cinco colunas do board, cada uma com a primeira página e o total. */
     readonly board: (query: DealBoardQuery) => Effect.Effect<readonly DealColumn[]>;
     /**
+     * O negócio, ou `Option.none()` — inclusive quando ele existe mas foi
+     * removido. É o que responde "esse card ainda está aí, e em que coluna?"
+     * antes de decidir se o movimento vale.
+     */
+    readonly findById: (id: DealId) => Effect.Effect<Option.Option<DealRecord>>;
+    /**
      * Grava o negócio e devolve o card como o board o desenha — com o Lead e o
      * responsável já resolvidos, que é o que a rota responde no 201. O mesmo
      * formato da listagem, pelo mesmo motivo do Lead: um Schema só descrevendo
      * "um Deal como o CRM o mostra".
      */
     readonly create: (deal: NewDeal) => Effect.Effect<DealWithRelations>;
+    /**
+     * Move o negócio de coluna e devolve o card no mesmo formato da listagem.
+     *
+     * **Não recusa nada**: quem decide se o movimento existe é a regra pura do
+     * Pipeline, acima da seam, e quem confere se o negócio ainda está lá é o
+     * caso de uso, com `findById`. Aqui só se escreve — é o que mantém a regra
+     * onde os testes a alcançam sem banco.
+     */
+    readonly moveToStage: (
+      id: DealId,
+      move: DealStageMove,
+    ) => Effect.Effect<DealWithRelations>;
   }
 >() {}
 
@@ -297,6 +329,18 @@ export const DealRepositoryInMemory = (
         };
       };
 
+      /**
+       * O negócio de identificador `id` que ainda existe para quem lê.
+       *
+       * O filtro de remoção lógica não é repetido em cada caminho: ele é este
+       * predicado, e é o mesmo que a Layer de Prisma escreve como
+       * `where: { id, deletedAt: null }`.
+       */
+      const isVisible =
+        (id: DealId) =>
+        (deal: DealRecord): boolean =>
+          deal.id === id && deal.deletedAt === null;
+
       /*
        * O funil e a carteira lidos no mesmo instante. Ler os dois a cada
        * consulta, em vez de guardar os Leads na montagem, é o que faz um
@@ -341,6 +385,36 @@ export const DealRepositoryInMemory = (
 
             const leads = yield* Ref.get(leadStore);
             return resolve(record, summarize(leads));
+          }),
+
+        findById: (id) =>
+          // O filtro de remoção lógica vale aqui como em toda leitura.
+          Ref.get(store).pipe(
+            Effect.map((deals) => Option.fromNullable(deals.find(isVisible(id)))),
+          ),
+
+        moveToStage: (id, move) =>
+          Effect.gen(function* () {
+            const moved = { stage: move.stage, lastInteractionAt: move.at };
+
+            /*
+             * `Ref.updateAndGet` é o `update` seguido de leitura, numa operação
+             * atômica: em TypeScript comum seria `store = f(store); return store`,
+             * com a diferença de que aqui ninguém pode ler entre as duas metades.
+             */
+            const deals = yield* Ref.updateAndGet(store, (current) =>
+              current.map((deal) => (isVisible(id)(deal) ? { ...deal, ...moved } : deal)),
+            );
+
+            const deal = deals.find(isVisible(id));
+            if (deal === undefined) {
+              // Defeito, não erro de domínio: o caso de uso já conferiu com
+              // `findById` que o negócio está lá antes de mandar movê-lo.
+              throw new Error(`O negócio ${id} sumiu entre a leitura e o movimento.`);
+            }
+
+            const leads = yield* Ref.get(leadStore);
+            return resolve(deal, summarize(leads));
           }),
       };
     }),

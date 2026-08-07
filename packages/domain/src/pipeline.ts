@@ -35,3 +35,77 @@ export type OpenDealStage = (typeof OPEN_DEAL_STAGES)[number];
  */
 export const isOpenDealStage = (stage: DealStage): stage is OpenDealStage =>
   (OPEN_DEAL_STAGES as readonly DealStage[]).includes(stage);
+
+/*
+ * ---------------------------------------------------------------------------
+ * O movimento
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Por que o funil recusa um movimento.
+ *
+ * Os dois nomes **são as tags dos erros de domínio** correspondentes, e não uma
+ * enumeração paralela: a rota traduz o nome no `Data.TaggedError` de mesmo
+ * nome, e o app web reconhece a recusa que vem do servidor pelo mesmo nome que
+ * a sua própria checagem produziu. Um vocabulário só para a mesma regra.
+ */
+export type StageMoveRefusal = 'DealAlreadyClosed' | 'InvalidStageTransition';
+
+/**
+ * O funil aceita levar um negócio de um estágio para outro? Devolve o motivo da
+ * recusa, ou `undefined` quando o movimento vale.
+ *
+ * **É a função mais compartilhada do projeto**, e o argumento mais concreto a
+ * favor do pacote de domínio: a coluna do board pergunta a ela se aceita o card
+ * — antes de qualquer ida ao servidor — e a rota pergunta a ela antes de
+ * escrever. Não existem duas regras de funil que possam divergir, e é por isso
+ * que o card que o navegador recusa é exatamente o que a API recusaria.
+ *
+ * As duas recusas, em ordem de precedência (ADR-0003):
+ *
+ * 1. **negócio encerrado não se move.** Qualquer escrita nele é recusada, e a
+ *    checagem vem primeiro porque essa é a explicação verdadeira do que
+ *    aconteceu — mesmo quando o destino também seria inválido por si só.
+ * 2. **`CLOSED` não é destino de movimentação.** Chega-se nele marcando Ganho
+ *    ou Perdido, e por nenhum outro caminho; arrastar para lá não move nada.
+ *    (Na fatia que encerra negócios, esse mesmo gesto passa a abrir a escolha
+ *    entre Ganho e Perdido — ADR-0003. A regra daqui não muda: o que muda é o
+ *    que a tela faz com a recusa.)
+ *
+ * Entre os quatro abertos o movimento é livre **nos dois sentidos**, e sem
+ * pular etapa: negociação real avança, recua e às vezes salta. Mover para o
+ * estágio em que o negócio já está também passa: `PATCH` é idempotente, e
+ * recusar inventaria um erro que a tabela do spec não tem.
+ *
+ * O estágio de origem basta para saber que um negócio está encerrado: o estado
+ * "estágio Fechado com resultado em aberto" é inalcançável por construção
+ * (ADR-0003), e é o que permite ao card do board — que carrega o estágio, e não
+ * o resultado — decidir o drop sozinho.
+ */
+export const refuseStageMove = (
+  from: DealStage,
+  to: DealStage,
+): StageMoveRefusal | undefined => {
+  if (from === 'CLOSED') return 'DealAlreadyClosed';
+  if (!isOpenDealStage(to)) return 'InvalidStageTransition';
+
+  return undefined;
+};
+
+/**
+ * O motivo da recusa em português, pronto para a tela.
+ *
+ * Mora aqui junto da regra, e não de cada lado: a mensagem que o navegador
+ * mostra ao recusar o drop e a que a API devolve no corpo do erro são **a mesma
+ * frase**. Ver `labels.ts` no app web para o resto do vocabulário de interface;
+ * a diferença é que estas frases explicam uma regra, e a regra é compartilhada.
+ */
+export const STAGE_MOVE_REFUSALS: Record<StageMoveRefusal, string> = {
+  DealAlreadyClosed:
+    'Este negócio já foi encerrado e não volta ao funil. O histórico de ' +
+    'negócios fechados não muda.',
+  InvalidStageTransition:
+    'Fechado não é destino de arrasto. Para encerrar, marque o negócio como ' +
+    'ganho ou perdido.',
+};

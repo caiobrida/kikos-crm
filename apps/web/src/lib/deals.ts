@@ -4,6 +4,7 @@ import {
   DealBoard,
   DealListItem,
   DealPage,
+  MoveDealStageInput,
   type DealStage,
 } from '@kikos/domain';
 import {
@@ -15,11 +16,21 @@ import {
 } from '@tanstack/react-query';
 import { Schema } from 'effect';
 import { apiJson } from './api';
+import { boardWithDealMoved, pageWithoutDeal } from './board';
 import { leadsQueryKey } from './leads';
 import { toQueryString } from './queryString';
 
 /** O prefixo de toda consulta de Deal — é por ele que as escritas as invalidam. */
 const dealsQueryKey = ['deals'] as const;
+
+/*
+ * Os dois prefixos de dentro do funil. Existem como constantes porque a
+ * movimentação precisa alcançar os dois caches antes da resposta do servidor: o
+ * board, onde o card muda de coluna, e as páginas do "carregar mais", de onde
+ * ele some.
+ */
+const boardQueryKey = [...dealsQueryKey, 'board'] as const;
+const columnQueryKey = [...dealsQueryKey, 'column'] as const;
 
 /**
  * O recorte que o board está mostrando.
@@ -56,7 +67,7 @@ export const boardViewKey = (view: BoardView): string => `${view.search}:${view.
  */
 export const useBoard = (view: BoardView) =>
   useQuery({
-    queryKey: [...dealsQueryKey, 'board', view] as const,
+    queryKey: [...boardQueryKey, view] as const,
     queryFn: ({ signal }) =>
       apiJson(DealBoard, `/deals/board${toQueryString({ ...view })}`, { signal }),
     /*
@@ -108,7 +119,7 @@ export const useColumnPages = (
       };
 
       return {
-        queryKey: [...dealsQueryKey, 'column', query] as const,
+        queryKey: [...columnQueryKey, query] as const,
         queryFn: ({ signal }: { readonly signal: AbortSignal }) =>
           apiJson(DealPage, `/deals${toQueryString(query)}`, { signal }),
       };
@@ -155,6 +166,84 @@ export const useCreateDeal = () => {
         body: Schema.encodeSync(CreateDealInput)(input),
       }),
     onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
+      ]),
+  });
+};
+
+/**
+ * O gesto: qual card, e para que coluna.
+ *
+ * Não confundir com o `DealStageMove` do repositório da API, que é o que a
+ * escrita grava (`{ stage, at }`). Este é o pedido visto da tela, e carrega o
+ * **card inteiro** — não só o identificador —, porque é ele que a coluna de
+ * destino desenha antes de o servidor responder.
+ */
+export interface DealMove {
+  readonly deal: DealListItem;
+  readonly to: DealStage;
+}
+
+/**
+ * Move um negócio de coluna, **na velocidade do gesto**.
+ *
+ * É a única mutação otimista do CRM, e a exceção tem um motivo estreito: as
+ * outras escritas acontecem dentro de um formulário, onde esperar o servidor é
+ * o comportamento esperado; esta acontece na ponta do dedo de quem arrasta, e
+ * um card que só chega à outra coluna depois da resposta parece um arrasto que
+ * não pegou.
+ *
+ * O ciclo tem quatro tempos, e cada um resolve um problema concreto:
+ *
+ * - **`onMutate`** desenha o movimento antes de enviá-lo. Antes de mexer,
+ *   cancela as consultas em voo do funil: uma resposta pedida há um instante
+ *   chegaria com o board de antes e apagaria a previsão. Depois guarda o cache
+ *   como estava — é este retrato que desfaz tudo se o servidor recusar.
+ * - **`onError`** devolve o retrato. É o "o card volta sozinho para a origem" do
+ *   spec, e a razão de o retrato cobrir o funil inteiro, e não só a consulta do
+ *   board: as páginas do "carregar mais" também foram alteradas.
+ * - **`onSettled`** invalida, tenha dado certo ou errado. A previsão é um
+ *   palpite bem-informado, não a verdade: quem diz onde o card está, quantos
+ *   negócios a coluna tem e qual é o status do contato é o servidor.
+ * - **a lista de Leads** entra na invalidação porque mover muda o selo do
+ *   contato vinculado — como na criação. Esquecê-la deixaria as duas telas
+ *   contando histórias diferentes até alguém recarregar a página.
+ */
+export const useMoveDealStage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ deal, to }: DealMove) =>
+      apiJson(DealListItem, `/deals/${deal.id}/stage`, {
+        method: 'PATCH',
+        // O mesmo Schema que a rota usa para ler o corpo, no caminho de volta.
+        body: Schema.encodeSync(MoveDealStageInput)({ stage: to }),
+      }),
+
+    onMutate: async ({ deal, to }) => {
+      await queryClient.cancelQueries({ queryKey: dealsQueryKey });
+
+      const snapshot = queryClient.getQueriesData({ queryKey: dealsQueryKey });
+
+      queryClient.setQueriesData<DealBoard>({ queryKey: boardQueryKey }, (board) =>
+        boardWithDealMoved(board, deal, to),
+      );
+      queryClient.setQueriesData<DealPage>({ queryKey: columnQueryKey }, (page) =>
+        pageWithoutDeal(page, deal.id),
+      );
+
+      return { snapshot };
+    },
+
+    onError: (_error, _move, context) => {
+      for (const [key, data] of context?.snapshot ?? []) {
+        queryClient.setQueryData(key, data);
+      }
+    },
+
+    onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
         queryClient.invalidateQueries({ queryKey: leadsQueryKey }),

@@ -213,3 +213,31 @@ export const CreateDealInput = Schema.Struct({
 
 export type CreateDealInput = typeof CreateDealInput.Type;
 export type CreateDealInputEncoded = typeof CreateDealInput.Encoded;
+
+/*
+ * ---------------------------------------------------------------------------
+ * O movimento
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O corpo de `PATCH /deals/:id/stage` — a coluna em que o card foi solto.
+ *
+ * Um campo só, e o menor corpo do CRM: mover é uma ação, não a edição de um
+ * formulário. O que muda junto — a última interação do negócio e do contato, e
+ * o status do Lead — é decidido pelo domínio, e por isso nada disso existe
+ * aqui: um campo que não está no Schema não tem como ser escolhido pelo corpo
+ * da requisição.
+ *
+ * Como no cadastro, `stage` aceita os cinco estágios do vocabulário, inclusive
+ * `CLOSED`. Quem recusa o destino é a regra pura do Pipeline
+ * (`refuseStageMove`), e é ela que responde 422 — "esse movimento não existe" —
+ * em vez de 400, que diria "esse campo está malformado". O board nem chega a
+ * chamar a rota nesse caso; a recusa existe para quem enviar por fora da tela.
+ */
+export const MoveDealStageInput = Schema.Struct({
+  stage: DealStage,
+});
+
+export type MoveDealStageInput = typeof MoveDealStageInput.Type;
+export type MoveDealStageInputEncoded = typeof MoveDealStageInput.Encoded;

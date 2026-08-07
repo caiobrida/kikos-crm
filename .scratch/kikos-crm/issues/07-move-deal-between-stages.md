@@ -16,15 +16,15 @@ arrastar-e-soltar se mostre custoso.
 
 **Branch:** `feat/move-deal-between-stages`
 
-- [ ] Arrastar entre os quatro estágios abertos funciona nos dois sentidos
-- [ ] O card aparece na coluna de destino antes da resposta da API
-- [ ] Recusa do servidor devolve o card à origem e informa o motivo
-- [ ] Arrastar para Fechado é recusado pelo frontend, sem chamar a API
-- [ ] Os contadores das duas colunas envolvidas se ajustam após o movimento
-- [ ] O status do Lead acompanha o movimento: negócio em Proposta ou Negociação leva o Lead para
+- [x] Arrastar entre os quatro estágios abertos funciona nos dois sentidos
+- [x] O card aparece na coluna de destino antes da resposta da API
+- [x] Recusa do servidor devolve o card à origem e informa o motivo
+- [x] Arrastar para Fechado é recusado pelo frontend, sem chamar a API
+- [x] Os contadores das duas colunas envolvidas se ajustam após o movimento
+- [x] O status do Lead acompanha o movimento: negócio em Proposta ou Negociação leva o Lead para
       "Negociação"
-- [ ] A última interação do negócio e do Lead é atualizada a cada movimento
-- [ ] Testes cobrem transições válidas nos dois sentidos, transição para Fechado recusada, e
+- [x] A última interação do negócio e do Lead é atualizada a cada movimento
+- [x] Testes cobrem transições válidas nos dois sentidos, transição para Fechado recusada, e
       movimento em negócio já encerrado recusado
 
 ## Decisões que valem lembrar
