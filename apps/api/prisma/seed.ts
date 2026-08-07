@@ -1,4 +1,5 @@
 import {
+  dealCloseRecord,
   stageMoveRecord,
   type CommentKind,
   type DealResult,
@@ -605,14 +606,58 @@ const COMMENTS: readonly SeedComment[] = [
     kind: 'USER',
     body: 'Entrega e montagem concluídas. O Paulo topou nos indicar para as outras unidades da rede.',
     author: 'maria.silva@kikos.com.br',
-    daysAgo: 25,
+    daysAgo: 26,
   },
   {
     deal: 'Ampliação do espaço de crossfit',
     kind: 'USER',
     body: 'Perdemos por prazo: o concorrente entregava em três semanas e nós em oito.',
     author: 'caio.brida@kikos.com.br',
+    daysAgo: 9,
+  },
+  /*
+   * O encerramento de cada negócio da coluna Fechado.
+   *
+   * Os quatro têm registro porque no produto **todo** negócio encerrado tem: a
+   * ação que preenche resultado e data de fechamento é a mesma que escreve esta
+   * linha. Um negócio fechado sem ela seria um estado que o CRM não sabe
+   * produzir — como um resultado sem data.
+   *
+   * O `daysAgo` de cada um é o `lastInteractionDaysAgo` do negócio, que é
+   * também o `closedAt`: encerrar é uma operação só, e as três datas descrevem
+   * o mesmo instante. O autor é o responsável pelo negócio, que é quem clicou.
+   *
+   * O texto sai de `dealCloseRecord`, como o da movimentação sai de
+   * `stageMoveRecord`: dado de exemplo escrito à mão logo divergiria do que o
+   * produto grava.
+   */
+  {
+    deal: 'Reposição de bicicletas ergométricas',
+    kind: 'SYSTEM',
+    body: dealCloseRecord('WON'),
+    author: 'maria.silva@kikos.com.br',
+    daysAgo: 5,
+  },
+  {
+    deal: 'Academia do hotel — equipamento completo',
+    kind: 'SYSTEM',
+    body: dealCloseRecord('WON'),
+    author: 'maria.silva@kikos.com.br',
+    daysAgo: 25,
+  },
+  {
+    deal: 'Ampliação do espaço de crossfit',
+    kind: 'SYSTEM',
+    body: dealCloseRecord('LOST'),
+    author: 'caio.brida@kikos.com.br',
     daysAgo: 8,
+  },
+  {
+    deal: 'Renovação da sala de musculação',
+    kind: 'SYSTEM',
+    body: dealCloseRecord('LOST'),
+    author: 'maria.silva@kikos.com.br',
+    daysAgo: 20,
   },
 ];
 

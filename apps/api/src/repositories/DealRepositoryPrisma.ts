@@ -32,7 +32,10 @@ const LIST_SELECT = {
   id: true,
   title: true,
   valueInCents: true,
+  // As duas dimensões de ADR-0003. O desfecho vem no card porque a coluna
+  // Fechado precisa distinguir ganho de perdido sem abrir nenhum deles.
   stage: true,
+  result: true,
   // Os dois `JOIN`, escritos como relação: o Lead e o responsável vêm junto de
   // cada linha, em vez de uma consulta por card depois.
   lead: { select: { id: true, name: true, company: true } },
@@ -275,6 +278,32 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
             where: { id, deletedAt: null },
             data: { stage: move.stage, lastInteractionAt: move.at },
             // O mesmo `select` da listagem: a linha volta pronta para o card.
+            select: LIST_SELECT,
+          });
+
+          return toDealWithRelations(row);
+        }),
+
+      close: (id, closing) =>
+        Effect.promise(async () => {
+          /*
+           * **Um `UPDATE`, três colunas.** É aqui que "encerrar preenche
+           * resultado, data de fechamento e estágio numa operação só" (ADR-0003)
+           * deixa de ser uma frase e passa a ser garantido pelo banco: não há
+           * instante em que um negócio esteja ganho e ainda no meio do funil,
+           * nem em Fechado com o resultado em aberto.
+           *
+           * A cláusula de remoção entra no `where` do próprio `update`, como na
+           * movimentação.
+           */
+          const row = await prisma.deal.update({
+            where: { id, deletedAt: null },
+            data: {
+              result: closing.result,
+              closedAt: closing.at,
+              stage: 'CLOSED',
+              lastInteractionAt: closing.at,
+            },
             select: LIST_SELECT,
           });
 

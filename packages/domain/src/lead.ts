@@ -1,6 +1,6 @@
 import { Schema } from 'effect';
 import { Chosen } from './choice';
-import { LeadSource, LeadStatus } from './enums';
+import { LeadSource, LeadStatus, type ClosedDealResult } from './enums';
 import { LeadId, UserId } from './ids';
 import {
   DEFAULT_PAGE_SIZE,
@@ -224,3 +224,20 @@ export const LEAD_STATUS_AFTER_DEAL_CREATED: LeadStatus = 'CONTACT';
  */
 export const leadStatusAfterDealMoved = (stage: OpenDealStage): LeadStatus | undefined =>
   stage === 'PROPOSAL_SENT' || stage === 'NEGOTIATION' ? 'NEGOTIATION' : undefined;
+
+/**
+ * O status que o Lead assume quando um Deal dele é encerrado.
+ *
+ * As duas últimas linhas da tabela do spec, e as únicas que **sempre** mexem no
+ * selo: o retorno é `LeadStatus`, e não `LeadStatus | undefined` como o da
+ * movimentação. A diferença é de conteúdo, não de gosto — movimentar às vezes
+ * não diz nada novo sobre o relacionamento; encerrar sempre diz, porque é o
+ * desfecho.
+ *
+ * Os dois vocabulários coincidem nos nomes (`WON`, `LOST`) mas são vocabulários
+ * distintos — o desfecho do negócio e a situação do contato —, e por isso a
+ * tradução é escrita e não um cast: um Lead com dois negócios lê o do último
+ * evento, e é a regra "último evento vence" que decide qual.
+ */
+export const leadStatusAfterDealClosed = (result: ClosedDealResult): LeadStatus =>
+  result === 'WON' ? 'WON' : 'LOST';

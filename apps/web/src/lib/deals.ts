@@ -1,5 +1,6 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
+  CloseDealInput,
   CreateDealInput,
   DealBoard,
   DealDetail,
@@ -275,6 +276,44 @@ export const useMoveDealStage = () => {
     },
 
     onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
+      ]),
+  });
+};
+
+/**
+ * Encerra um negócio como ganho ou perdido.
+ *
+ * **Sem escrita otimista**, ao contrário do arrasto, e a diferença é a mesma que
+ * separa comentar de mover: encerrar termina num clique em "Marcar como Ganho",
+ * onde esperar o servidor é o comportamento que se espera — e um card que pulasse
+ * para a coluna Fechado, pintasse de verde e voltasse seria pior do que meio
+ * segundo de espera. É também a ação menos reversível do CRM: reabrir negócio não
+ * existe, e prever na tela o que o servidor pode recusar seria mostrar um
+ * desfecho que talvez não tenha sido registrado.
+ *
+ * As duas invalidações são as mesmas do arrasto, e pelos mesmos motivos — o card
+ * muda de coluna e o selo do contato vinculado passa a Ganho ou Perdido. A do
+ * prefixo de Deal alcança de uma vez o board, o detalhamento (que ganhou
+ * resultado e data de fechamento) e a linha do tempo, onde nasceu o registro de
+ * sistema do encerramento.
+ *
+ * A invalidação é aguardada, então a mutação só termina depois que o funil
+ * voltou do servidor: quem fechou o diálogo já encontra o card na coluna certa.
+ */
+export const useCloseDeal = (id: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CloseDealInput) =>
+      apiJson(DealListItem, `/deals/${id}/close`, {
+        method: 'POST',
+        // O mesmo Schema que a rota usa para ler o corpo, no caminho de volta.
+        body: Schema.encodeSync(CloseDealInput)(input),
+      }),
+    onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
         queryClient.invalidateQueries({ queryKey: leadsQueryKey }),

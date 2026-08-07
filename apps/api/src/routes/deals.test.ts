@@ -1,5 +1,6 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
+  DEAL_CLOSE_REFUSALS,
   DEAL_STAGES,
   DealBoard,
   type DealDetail,
@@ -7,6 +8,7 @@ import {
   DealPage,
   DealSortBy,
   LeadListItem,
+  OPEN_DEAL_STAGES,
   STAGE_MOVE_REFUSALS,
   type DealBoardColumn,
   type DealStage,
@@ -951,6 +953,286 @@ describe('PATCH /deals/:id/stage', () => {
 
       expect(body.error).toBe('ValidationFailed');
       expect(body.issues?.map((issue) => issue.path)).toContain('id');
+    });
+  });
+});
+
+/*
+ * O contrato de `POST /deals/:id/close`.
+ *
+ * A regra que ela aplica é curta — negócio encerrado não se encerra de novo —, e
+ * o que estes testes existem para provar é a outra metade, que é onde mora a
+ * decisão de ADR-0003: **encerrar preenche resultado, data de fechamento e
+ * estágio numa operação só**. São três colunas que o vendedor nunca atualiza à
+ * mão, e é isso que torna inalcançável o estado "estágio Fechado com resultado
+ * em aberto" — o que, por sua vez, é o que permite à coluna Fechado sempre saber
+ * pintar cada card de verde ou vermelho.
+ */
+describe('POST /deals/:id/close', () => {
+  /** O negócio que este bloco encerra. Nasce em Novo, do contato Ana Beatriz. */
+  const DEAL_TITLE = 'Esteiras para a sala principal';
+  const LEAD_NAME = 'Ana Beatriz Souza';
+
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(DEAL_TITLE);
+  });
+
+  /** Encerra e decodifica a resposta com o mesmo Schema do card do board. */
+  const close = async (result: string, id: string = deal.id) => {
+    const response = await harness.post(`/deals/${id}/close`, { result });
+
+    expect(response.statusCode).toBe(200);
+    return Schema.decodeUnknownSync(DealListItem)(response.json());
+  };
+
+  const rejection = async (
+    result: unknown,
+    status: number,
+    id: string = deal.id,
+  ): Promise<{ error: string; message: string; issues?: { path: string }[] }> => {
+    const response = await harness.post(`/deals/${id}/close`, { result });
+
+    expect(response.statusCode).toBe(status);
+    return response.json();
+  };
+
+  /** O negócio como o detalhamento o lê — de onde saem resultado e data. */
+  const detailOf = (id: string = deal.id): Promise<DealDetail> =>
+    read.dealDetail(harness, id);
+
+  /** Um negócio que já nasceu encerrado na fixture, para as recusas. */
+  const closedDeal = async (): Promise<DealListItem> => {
+    const card = columnOf(await board(), 'CLOSED').deals.at(0);
+    if (card === undefined) throw new Error('A fixture não tem negócio encerrado.');
+    return card;
+  };
+
+  describe('o encerramento', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'POST',
+        url: `/deals/${deal.id}/close`,
+        payload: { result: 'WON' },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('preenche resultado, data de fechamento e estágio numa operação', async () => {
+      expect(deal.stage).toBe('NEW');
+      await close('WON');
+
+      /*
+       * As três de uma vez, e não duas ações do usuário: é a decisão de
+       * ADR-0003. Um encerramento que deixasse o estágio para trás produziria
+       * um negócio ganho parado no meio do funil.
+       */
+      const detail = await detailOf();
+      expect(detail.result).toBe('WON');
+      expect(detail.stage).toBe('CLOSED');
+      expect(detail.closedAt).toBeInstanceOf(Date);
+    });
+
+    it('registra o mesmo instante na data de fechamento e na última interação', async () => {
+      await close('WON');
+      const detail = await detailOf();
+
+      // Um relógio só para a operação: encerrar é um acontecimento, e as duas
+      // colunas descrevem o mesmo.
+      expect(detail.closedAt?.getTime()).toBe(detail.lastInteractionAt.getTime());
+    });
+
+    it('faz o mesmo ao marcar Perdido', async () => {
+      await close('LOST');
+
+      const detail = await detailOf();
+      expect(detail.result).toBe('LOST');
+      expect(detail.stage).toBe('CLOSED');
+      expect(detail.closedAt).toBeInstanceOf(Date);
+    });
+
+    it('leva o card para a coluna Fechado, tirando-o da de origem', async () => {
+      const before = await board();
+      await close('WON');
+      const after = await board();
+
+      expect(columnOf(after, 'NEW').total).toBe(columnOf(before, 'NEW').total - 1);
+      expect(columnOf(after, 'CLOSED').total).toBe(columnOf(before, 'CLOSED').total + 1);
+      expect(columnOf(after, 'NEW').deals.map((card) => card.id)).not.toContain(deal.id);
+    });
+
+    it('devolve o card com o desfecho, que é o que pinta a coluna Fechado', async () => {
+      const closed = await close('LOST');
+
+      /*
+       * O `result` no card é o que permite distinguir ganho de perdido **sem
+       * abrir os cards**. Sem ele a coluna Fechado precisaria de um
+       * detalhamento por card só para escolher a cor.
+       */
+      expect(closed.result).toBe('LOST');
+      expect(closed.stage).toBe('CLOSED');
+      expect(closed.lead).toEqual(deal.lead);
+      expect(closed.owner).toEqual(deal.owner);
+    });
+
+    it('deixa ganhos e perdidos distinguíveis dentro da coluna Fechado', async () => {
+      const column = columnOf(await board(), 'CLOSED');
+
+      // A fixture tem um de cada, e nenhum card da coluna pode estar em aberto:
+      // "estágio Fechado com resultado em aberto" é inalcançável (ADR-0003).
+      expect(column.deals.map((card) => card.result).sort()).toEqual(['LOST', 'WON']);
+    });
+
+    it('deixa em aberto o negócio que ninguém encerrou', async () => {
+      // Nas outras quatro colunas o desfecho é sempre o mesmo, e é isso que faz
+      // a cor do card significar alguma coisa só na coluna Fechado.
+      for (const stage of OPEN_DEAL_STAGES) {
+        const column = columnOf(await board(), stage);
+        expect(column.deals.every((card) => card.result === 'OPEN')).toBe(true);
+      }
+    });
+
+    it('não perde nem duplica negócio no funil inteiro', async () => {
+      await close('WON');
+      const after = await board();
+
+      expect(totalsOf(after).reduce((total, column) => total + column, 0)).toBe(
+        VISIBLE_DEAL_COUNT,
+      );
+    });
+  });
+
+  describe('o status do Lead', () => {
+    it('leva o contato para Ganho quando a venda fecha', async () => {
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEW');
+      await close('WON');
+
+      expect((await leadNamed(LEAD_NAME)).status).toBe('WON');
+    });
+
+    it('leva o contato para Perdido quando a venda não acontece', async () => {
+      await close('LOST');
+
+      expect((await leadNamed(LEAD_NAME)).status).toBe('LOST');
+    });
+
+    it('registra o encerramento como última interação do contato', async () => {
+      const before = (await leadNamed(LEAD_NAME)).lastInteractionAt.getTime();
+      await close('WON');
+
+      expect((await leadNamed(LEAD_NAME)).lastInteractionAt.getTime()).toBeGreaterThan(
+        before,
+      );
+    });
+
+    it('não mexe no contato de quem não teve negócio encerrado', async () => {
+      await close('WON');
+
+      expect((await leadNamed('Carla Dias')).status).toBe('NEGOTIATION');
+    });
+  });
+
+  describe('a recusa', () => {
+    it('devolve 409 ao encerrar um negócio já encerrado', async () => {
+      const closed = await closedDeal();
+      const body = await rejection('WON', 409, closed.id);
+
+      /*
+       * 409, e não 422: o pedido existe no funil, e o que impede é o desfecho
+       * já registrado. Reabrir negócio não existe (ADR-0003).
+       */
+      expect(body.error).toBe('DealAlreadyClosed');
+      expect(body.message).toBe(DEAL_CLOSE_REFUSALS.DealAlreadyClosed);
+    });
+
+    it('não sobrescreve o desfecho de quem já foi encerrado', async () => {
+      const closed = await closedDeal();
+      const before = await read.dealDetail(harness, closed.id);
+
+      await rejection(before.result === 'WON' ? 'LOST' : 'WON', 409, closed.id);
+
+      const after = await read.dealDetail(harness, closed.id);
+      expect(after.result).toBe(before.result);
+      expect(after.closedAt?.getTime()).toBe(before.closedAt?.getTime());
+    });
+
+    it('recusa encerrar duas vezes o negócio que este teste acabou de encerrar', async () => {
+      await close('WON');
+
+      // O caminho que a tela de fato produz: dois cliques no mesmo botão, ou
+      // duas abas com o mesmo negócio aberto.
+      expect((await rejection('LOST', 409)).error).toBe('DealAlreadyClosed');
+      expect((await detailOf()).result).toBe('WON');
+    });
+
+    it('recusa encerrar com o resultado em aberto', async () => {
+      const body = await rejection('OPEN', 400);
+
+      /*
+       * 400, e não 422 como o `stage: 'CLOSED'` do cadastro: `OPEN` não é um
+       * desfecho pedido num movimento que não existe — encerrar *é* escolher
+       * entre Ganho e Perdido, e o Schema da rota não conhece outra entrada.
+       */
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('result');
+      expect((await detailOf()).stage).toBe('NEW');
+    });
+
+    it('recusa um desfecho fora do vocabulário', async () => {
+      const body = await rejection('GANHAMOS', 400);
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('result');
+    });
+
+    it('devolve 404 quando o negócio não existe', async () => {
+      expect((await rejection('WON', 404, randomUUID())).error).toBe('DealNotFound');
+    });
+
+    it('devolve 404 quando o negócio foi removido', async () => {
+      const removed = harness.deals.find((record) => record.title === DELETED_DEAL_TITLE);
+
+      // Negócio removido não existe para quem lê — nem para quem encerra.
+      expect((await rejection('WON', 404, removed?.id ?? '')).error).toBe('DealNotFound');
+    });
+
+    it('recusa um identificador de negócio que não é UUID', async () => {
+      const body = await rejection('WON', 400, 'o-negocio-de-ontem');
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('id');
+    });
+  });
+
+  describe('depois de encerrado', () => {
+    it('continua recusando mover o negócio', async () => {
+      await close('WON');
+
+      const response = await harness.patch(`/deals/${deal.id}/stage`, {
+        stage: 'NEGOTIATION',
+      });
+
+      // A recusa que a fatia anterior já cobria, agora sobre um negócio que
+      // este teste encerrou: fechado é terminal, e o card nem arrasta na tela.
+      expect(response.statusCode).toBe(409);
+      expect(response.json<{ error: string }>().error).toBe('DealAlreadyClosed');
+      expect((await detailOf()).stage).toBe('CLOSED');
+    });
+
+    it('continua aceitando comentário', async () => {
+      await close('LOST');
+
+      /*
+       * `DealAlreadyClosed` recusa o que muda o desfecho de um negócio
+       * encerrado; acrescentar ao histórico não muda nada do que foi registrado
+       * (ADR-0003). Sem isso ninguém poderia anotar por que a venda foi perdida.
+       */
+      const response = await harness.post(`/deals/${deal.id}/comments`, {
+        body: 'Perdemos por prazo de entrega.',
+      });
+
+      expect(response.statusCode).toBe(201);
     });
   });
 });

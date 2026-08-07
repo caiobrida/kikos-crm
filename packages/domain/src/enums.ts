@@ -49,6 +49,31 @@ export const DEAL_RESULTS = [
   'LOST',
 ] as const satisfies readonly DealResult[];
 
+/**
+ * Os dois desfechos com que um Deal **termina** — o vocabulário do encerramento.
+ *
+ * `OPEN` fica de fora pelo mesmo motivo que `CLOSED` fica de fora de
+ * `OPEN_DEAL_STAGES`: em aberto é o estado de quem ainda não terminou, e não uma
+ * escolha que alguém faz. É esta lista que desenha os dois botões do
+ * detalhamento e o diálogo que o arrasto para Fechado abre.
+ */
+export const CLOSED_DEAL_RESULTS = [
+  'WON',
+  'LOST',
+] as const satisfies readonly DealResult[];
+
+/**
+ * O desfecho de um Deal encerrado. Ao contrário de `OpenDealStage`, que é só um
+ * tipo, este também é um Schema: ele valida o corpo de `POST /deals/:id/close`,
+ * e é aí que "encerrar é escolher entre Ganho e Perdido" deixa de ser convenção
+ * e vira a única entrada que a rota aceita.
+ *
+ * Deriva da lista acima em vez de repetir os literais, então um desfecho novo no
+ * vocabulário entra nos dois lugares de uma vez.
+ */
+export const ClosedDealResult = Schema.Literal(...CLOSED_DEAL_RESULTS);
+export type ClosedDealResult = typeof ClosedDealResult.Type;
+
 /** A situação do relacionamento com o Lead. Vocabulário distinto do Stage. */
 export const LeadStatus = Schema.Literal('NEW', 'CONTACT', 'NEGOTIATION', 'WON', 'LOST');
 export type LeadStatus = typeof LeadStatus.Type;

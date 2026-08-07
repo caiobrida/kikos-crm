@@ -1,7 +1,7 @@
 import { Schema } from 'effect';
 import { Chosen } from './choice';
 import { OptionalDate } from './dates';
-import { DealResult, DealStage } from './enums';
+import { ClosedDealResult, DealResult, DealStage } from './enums';
 import { DealId, LeadId, UserId } from './ids';
 import { LeadDossier, LeadSummary } from './lead';
 import { ValueInCents } from './money';
@@ -20,10 +20,17 @@ import { UserSummary } from './user';
  * Um Deal como um card do board o mostra.
  *
  * São os quatro dados que o card desenha — título, valor, o Lead e o
- * responsável —, mais o identificador e o Stage, que dizem **onde** o card
- * está. Nada além disso: descrição, data prevista e a linha do tempo pertencem
- * ao detalhamento, e repeti-los em cada card de cinco colunas seria tráfego que
- * ninguém lê.
+ * responsável —, mais o identificador e as duas dimensões de ADR-0003, que
+ * dizem **onde** o card está e **se ele terminou**. Nada além disso: descrição,
+ * data prevista e a linha do tempo pertencem ao detalhamento, e repeti-los em
+ * cada card de cinco colunas seria tráfego que ninguém lê.
+ *
+ * `result` está aqui por um requisito concreto: na coluna Fechado, ganhos e
+ * perdidos precisam ser distinguíveis **sem abrir os cards** — é a pergunta que
+ * o gestor faz de relance. Sem ele, ou a coluna pediria um detalhamento por
+ * card, ou pintaria todos da mesma cor. Nas outras quatro colunas ele é sempre
+ * `OPEN`, porque "estágio Fechado com resultado em aberto" — e o seu contrário —
+ * são inalcançáveis por construção.
  *
  * O mesmo item serve a listagem paginada (`GET /deals`), que é o que carrega as
  * páginas seguintes de uma coluna cheia. Card e linha de listagem são o mesmo
@@ -39,7 +46,9 @@ export const DealListItem = Schema.Struct({
   title: Schema.String,
   /** Inteiro em centavos. Quem formata em reais é a tela. Ver `money.ts`. */
   valueInCents: ValueInCents,
+  /** Onde o negócio está × se ele terminou e como. Ortogonais (ADR-0003). */
   stage: DealStage,
+  result: DealResult,
   lead: LeadSummary,
   owner: UserSummary,
 });
@@ -291,3 +300,34 @@ export const MoveDealStageInput = Schema.Struct({
 
 export type MoveDealStageInput = typeof MoveDealStageInput.Type;
 export type MoveDealStageInputEncoded = typeof MoveDealStageInput.Encoded;
+
+/*
+ * ---------------------------------------------------------------------------
+ * O encerramento
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O corpo de `POST /deals/:id/close` — o desfecho escolhido, e nada mais.
+ *
+ * `POST`, e não `PATCH`: encerrar não é editar um campo, é uma ação que muda
+ * três colunas de uma vez — resultado, data de fechamento e estágio — e que não
+ * se repete. `closedAt` e `stage` não estão aqui justamente por isso: quem os
+ * decide é o domínio, e um campo que não existe no Schema não tem como ser
+ * escolhido pelo corpo da requisição.
+ *
+ * **`result` é `ClosedDealResult`, e não `DealResult`.** É a diferença desta
+ * entrada para as duas outras do funil, que aceitam o vocabulário inteiro e
+ * deixam a regra pura recusar com 422: aqui `OPEN` não é um pedido que o CRM
+ * recusa, é um pedido que não existe — encerrar *é* escolher entre Ganho e
+ * Perdido. Deixá-lo entrar para recusá-lo adiante abriria, por um instante, a
+ * porta para o estado "estágio Fechado com resultado em aberto" que ADR-0003
+ * declara inalcançável. Quem enviar `OPEN` por fora da tela leva 400 com o campo
+ * apontado, como qualquer outra carga malformada.
+ */
+export const CloseDealInput = Schema.Struct({
+  result: ClosedDealResult,
+});
+
+export type CloseDealInput = typeof CloseDealInput.Type;
+export type CloseDealInputEncoded = typeof CloseDealInput.Encoded;

@@ -1,10 +1,11 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Either, Schema } from 'effect';
-import { OPEN_DEAL_STAGES } from './enums';
+import { CLOSED_DEAL_RESULTS, OPEN_DEAL_STAGES } from './enums';
 import { toValidationIssues } from './errors';
 import {
   CreateLeadInput,
   LEAD_STATUS_AFTER_DEAL_CREATED,
+  leadStatusAfterDealClosed,
   leadStatusAfterDealMoved,
 } from './lead';
 
@@ -210,6 +211,30 @@ describe('leadStatusAfterDealMoved', () => {
     // de status ou não, em vez de cair num caso que ninguém escreveu.
     for (const stage of OPEN_DEAL_STAGES) {
       expect(() => leadStatusAfterDealMoved(stage)).not.toThrow();
+    }
+  });
+});
+
+/*
+ * A última linha da tabela de status do spec, e a única que **sempre** mexe no
+ * selo: o desfecho de um negócio é o evento mais forte que existe sobre o
+ * relacionamento com o contato.
+ */
+describe('leadStatusAfterDealClosed', () => {
+  it('leva o contato ao mesmo desfecho do negócio', () => {
+    expect(leadStatusAfterDealClosed('WON')).toBe('WON');
+    expect(leadStatusAfterDealClosed('LOST')).toBe('LOST');
+  });
+
+  it('nunca devolve `undefined`, ao contrário da movimentação', () => {
+    /*
+     * Movimentar às vezes não é evento de status; encerrar sempre é. É a
+     * diferença que faz este retorno ser `LeadStatus` e o daquela ser
+     * `LeadStatus | undefined` — e é o compilador quem cobra a distinção de
+     * quem chama.
+     */
+    for (const result of CLOSED_DEAL_RESULTS) {
+      expect(leadStatusAfterDealClosed(result)).not.toBeUndefined();
     }
   });
 });

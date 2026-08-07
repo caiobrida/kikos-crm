@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Either, Schema } from 'effect';
-import { CreateDealInput, type CreateDealInputEncoded } from './deal';
+import { CloseDealInput, CreateDealInput, type CreateDealInputEncoded } from './deal';
 import { toValidationIssues } from './errors';
 
 /*
@@ -143,5 +143,35 @@ describe('CreateDealInput', () => {
 
       expect(fields).toEqual(expect.arrayContaining(['title', 'leadId', 'ownerId']));
     });
+  });
+});
+
+/*
+ * O corpo de `POST /deals/:id/close` — um campo só, e o vocabulário mais
+ * estreito do CRM.
+ */
+describe('CloseDealInput', () => {
+  const close = Schema.decodeUnknownEither(CloseDealInput);
+
+  it('aceita os dois desfechos com que se encerra um negócio', () => {
+    expect(Either.getOrThrow(close({ result: 'WON' })).result).toBe('WON');
+    expect(Either.getOrThrow(close({ result: 'LOST' })).result).toBe('LOST');
+  });
+
+  it('recusa encerrar com o resultado em aberto', () => {
+    /*
+     * **Aqui a recusa é do Schema**, ao contrário do `stage: 'CLOSED'` do
+     * cadastro, que é recusado pela regra do funil com 422. A diferença é o que
+     * cada um significa: `CLOSED` é um estágio legítimo pedido num movimento que
+     * não existe; `OPEN` não é desfecho nenhum — encerrar é escolher entre Ganho
+     * e Perdido. É esta recusa que torna "estágio Fechado com resultado em
+     * aberto" inalcançável por construção (ADR-0003).
+     */
+    expect(Either.isLeft(close({ result: 'OPEN' }))).toBe(true);
+  });
+
+  it('recusa um desfecho fora do vocabulário', () => {
+    expect(Either.isLeft(close({ result: 'GANHAMOS' }))).toBe(true);
+    expect(Either.isLeft(close({}))).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
 import {
+  CloseDealInput,
   CreateDealInput,
+  DEAL_CLOSE_REFUSALS,
   DealAlreadyClosed,
   DealBoard,
   DealBoardQuery,
@@ -15,8 +17,11 @@ import {
   MoveDealStageInput,
   OwnerNotFound,
   STAGE_MOVE_REFUSALS,
+  dealCloseRecord,
   isOpenDealStage,
+  leadStatusAfterDealClosed,
   leadStatusAfterDealMoved,
+  refuseDealClose,
   refuseStageMove,
   stageMoveRecord,
   type DealBoardColumn,
@@ -362,6 +367,96 @@ const moveDealStage = (
     return moved;
   });
 
+/**
+ * Encerra um negócio como ganho ou perdido.
+ *
+ * **É a única ação do CRM que tira um negócio do funil**, e a decisão que ela
+ * carrega é de ADR-0003: resultado, data de fechamento e estágio são preenchidos
+ * numa operação só, e não em dois passos que o vendedor faz na mão. É isso que
+ * torna inalcançável o estado "estágio Fechado com resultado em aberto" — e é
+ * essa impossibilidade que permite à coluna Fechado sempre saber pintar cada
+ * card de verde ou vermelho.
+ *
+ * O caso de uso é o irmão de `moveDealStage`, e a simetria é deliberada:
+ *
+ * 1. **o negócio ainda existe, e ele já terminou?** A regra pura
+ *    (`refuseDealClose`) é a mesma que a tela consulta antes de oferecer os
+ *    botões, e é ela que recusa encerrar duas vezes — com 409, porque o que
+ *    impede não é o pedido, é o desfecho já registrado.
+ * 2. **escrever o desfecho junto da última interação**, numa escrita só.
+ * 3. **sincronizar o contato vinculado**: aqui o status **sempre** muda, ao
+ *    contrário da movimentação — encerrar é o evento mais forte que existe sobre
+ *    o relacionamento, e por isso `leadStatusAfterDealClosed` devolve um status
+ *    e não um `undefined`.
+ * 4. **deixar o registro na linha do tempo**, para que o gestor leia depois como
+ *    a negociação terminou. Um registro só: a mudança de estágio é parte do
+ *    encerramento, não um segundo acontecimento.
+ *
+ * As escritas não compartilham transação, pelo mesmo motivo do cadastro e da
+ * movimentação: a seam de teste está acima dos repositórios. O pior caso é um
+ * negócio encerrado com o selo do contato um passo atrás — e o contato já não
+ * tem, por esse negócio, ação seguinte que o corrija, o que é o preço conhecido
+ * dessa escolha em toda a fatia.
+ */
+const closeDeal = (
+  id: DealId,
+  input: CloseDealInput,
+  /** Quem encerrou: é essa pessoa que assina o registro de sistema. */
+  actor: UserId,
+): Effect.Effect<
+  DealWithRelations,
+  DealNotFound | DealAlreadyClosed,
+  DealRepository | LeadRepository | CommentRepository
+> =>
+  Effect.gen(function* () {
+    const deal = yield* requireDeal(id);
+    const refusal = refuseDealClose(deal.stage);
+
+    if (refusal !== undefined) {
+      /*
+       * A frase é indexada **pela recusa**, e não escrita à mão, como em
+       * `stageMoveError`: é o que faz uma recusa nova nascida na regra chegar
+       * aqui sem mensagem e quebrar o typecheck, em vez de escapar com a
+       * explicação de outra. A frase mora no pacote compartilhado, junto da
+       * regra, e é a mesma que o detalhamento usa.
+       */
+      return yield* Effect.fail(
+        new DealAlreadyClosed({ message: DEAL_CLOSE_REFUSALS[refusal] }),
+      );
+    }
+
+    // A hora vem do `Clock` do Effect, como nas outras escritas: é serviço do
+    // runtime, e é o que um teste troca por `TestClock` para parar o tempo.
+    const now = new Date(yield* Clock.currentTimeMillis);
+
+    const deals = yield* DealRepository;
+    const closed = yield* deals.close(id, { result: input.result, at: now });
+
+    // O registro com o **mesmo** `now` do encerramento: o item no topo da linha
+    // do tempo e a data de fechamento descrevem o mesmo instante.
+    const comments = yield* CommentRepository;
+    yield* comments.create({
+      dealId: id,
+      kind: 'SYSTEM',
+      body: dealCloseRecord(input.result),
+      authorId: actor,
+      createdAt: now,
+    });
+
+    /*
+     * Sem `undefined` possível aqui, ao contrário da movimentação: o selo do
+     * contato sempre acompanha o desfecho do negócio, com a regra "último
+     * evento vence".
+     */
+    const leads = yield* LeadRepository;
+    yield* leads.recordLeadInteraction(deal.leadId, {
+      status: leadStatusAfterDealClosed(input.result),
+      at: now,
+    });
+
+    return closed;
+  });
+
 export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): void => {
   const run = makeRunner(runtime);
   const authenticate = makeAuthenticate(runtime);
@@ -425,6 +520,32 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
    * caminho (`/stage`) é o que deixa a rota de edição livre para receber o
    * formulário completo na fatia que a implementa.
    */
+  /*
+   * `POST`, e não `PATCH`: encerrar não é editar um campo do negócio, é uma
+   * ação que acontece uma vez e muda três colunas juntas. O sub-recurso no
+   * caminho (`/close`) diz isso — e o verbo diz que ela não é idempotente, ao
+   * contrário do movimento: pedi-la duas vezes é justamente o 409.
+   */
+  app.post('/deals/:id/close', { preHandler: authenticate }, (request, reply) => {
+    // Quem encerra assina o registro de sistema, como quem move.
+    const actor = requireCurrentUser(request).id;
+
+    const program = Effect.all([
+      decodeParams(DealIdParams, request.params),
+      decodeBody(CloseDealInput, request.body),
+    ]).pipe(Effect.flatMap(([params, input]) => closeDeal(params.id, input, actor)));
+
+    return run(reply, program, (reply, deal) =>
+      /*
+       * 200, e não 201: nada nasceu — um negócio que já existia terminou. O
+       * card volta no mesmo Schema do board, agora com o desfecho que pinta a
+       * coluna Fechado; a tela invalida o cache e deixa o servidor devolver o
+       * funil já com o card na coluna certa.
+       */
+      reply.send(Schema.encodeSync(DealListItem)(deal)),
+    );
+  });
+
   app.patch('/deals/:id/stage', { preHandler: authenticate }, (request, reply) => {
     // Quem move assina o registro de sistema. O `preHandler` acima é o que
     // garante que a sessão existe; `requireCurrentUser` transforma essa garantia

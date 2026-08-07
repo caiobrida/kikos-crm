@@ -1,4 +1,5 @@
-import type { DealDetail } from '@kikos/domain';
+import { refuseDealClose, type DealDetail } from '@kikos/domain';
+import { useState } from 'react';
 import { ApiError } from '../lib/api';
 import { formatDay, formatLastInteraction } from '../lib/dates';
 import { useDeal } from '../lib/deals';
@@ -7,6 +8,7 @@ import { Avatar } from '../ui/Avatar';
 import { DealResultBadge, DealStageBadge } from '../ui/Badge';
 import { Definition, NotInformed } from '../ui/Definition';
 import { Modal } from '../ui/Modal';
+import { CloseDealActions } from './CloseDealActions';
 import { DealTimelineSection } from './DealTimelineSection';
 
 /*
@@ -24,9 +26,12 @@ import { DealTimelineSection } from './DealTimelineSection';
  * cache: abrir o detalhamento a partir do painel não custa ida ao servidor, e há
  * um cache só a invalidar quando alguém comenta.
  *
- * Esta fatia é só leitura mais o comentário. Marcar Ganho ou Perdido, editar e
- * remover chegam nas fatias seguintes — e chegam **dentro deste modal**, que é o
- * motivo de o rodapé nascer vazio em vez de não existir.
+ * **O rodapé é onde o negócio se encerra.** Os dois botões são a escolha inteira:
+ * não há um "Encerrar" que pergunte depois, porque encerrar sem dizer como não é
+ * uma operação que exista (ADR-0003). Depois do encerramento eles dão lugar ao
+ * desfecho registrado — o negócio é terminal, e um botão que só serve para
+ * receber 409 é um convite a um erro. Editar e remover chegam na fatia seguinte,
+ * neste mesmo rodapé.
  */
 
 const DealFacts = ({ deal }: { readonly deal: DealDetail }) => (
@@ -149,6 +154,56 @@ export interface DealDetailModalProps {
   readonly onClose: () => void;
 }
 
+/**
+ * O rodapé: encerrar o negócio, ou o desfecho de quem já foi encerrado.
+ *
+ * A recusa mora **aqui**, e não dentro dos botões, porque ela precisa
+ * sobreviver a eles: quando o servidor responde 409 — outra pessoa encerrou o
+ * negócio primeiro —, a invalidação traz o negócio já fechado e os botões dão
+ * lugar ao desfecho. Quem clicou ficaria sem explicação nenhuma para a tela que
+ * mudou sozinha.
+ */
+const DealActions = ({ deal }: { readonly deal: DealDetail }) => {
+  const [refusal, setRefusal] = useState<string>();
+
+  /*
+   * A **mesma** regra que a rota consulta antes de escrever, e não um
+   * `deal.result === 'OPEN'` escrito aqui: o par estágio/resultado é ortogonal
+   * (ADR-0003) e hoje as duas leituras coincidem, mas quem decide o que é um
+   * negócio terminal é a regra, num lugar só. É o mesmo argumento que põe
+   * `refuseStageMove` na coluna do board antes de qualquer ida ao servidor.
+   */
+  const refused = refuseDealClose(deal.stage);
+
+  return (
+    <>
+      {refusal === undefined ? null : (
+        <p role="alert" className="mr-auto text-sm text-lost-300">
+          {refusal}
+        </p>
+      )}
+
+      {refused === undefined ? (
+        <CloseDealActions
+          dealId={deal.id}
+          onClosed={() => setRefusal(undefined)}
+          onRefused={setRefusal}
+        />
+      ) : (
+        /*
+         * Nada de botão para um negócio terminal — nem desabilitado: um controle
+         * que existe convida a tentar, e aqui não há segunda tentativa. O que o
+         * rodapé mostra é o que ficou registrado.
+         */
+        <p className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+          <DealResultBadge result={deal.result} />
+          {deal.closedAt === null ? null : <span>em {formatDay(deal.closedAt)}</span>}
+        </p>
+      )}
+    </>
+  );
+};
+
 export const DealDetailModal = ({ dealId, onClose }: DealDetailModalProps) => {
   const deal = useDeal(dealId);
 
@@ -161,6 +216,7 @@ export const DealDetailModal = ({ dealId, onClose }: DealDetailModalProps) => {
       {...(deal.data === undefined
         ? {}
         : { description: `${deal.data.lead.name} · ${deal.data.lead.company}` })}
+      {...(deal.data === undefined ? {} : { footer: <DealActions deal={deal.data} /> })}
     >
       {deal.isError ? (
         <p

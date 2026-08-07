@@ -1,7 +1,7 @@
 import { Schema } from 'effect';
-import { CommentKind, type DealStage } from './enums';
+import { CommentKind, type ClosedDealResult, type DealStage } from './enums';
 import { CommentId } from './ids';
-import { DEAL_STAGE_LABELS } from './pipeline';
+import { DEAL_RESULT_LABELS, DEAL_STAGE_LABELS } from './pipeline';
 import { RequiredText } from './text';
 import { UserSummary } from './user';
 
@@ -85,3 +85,18 @@ export type CreateCommentInputEncoded = typeof CreateCommentInput.Encoded;
  */
 export const stageMoveRecord = (from: DealStage, to: DealStage): string =>
   `Estágio alterado de ${DEAL_STAGE_LABELS[from]} para ${DEAL_STAGE_LABELS[to]}.`;
+
+/**
+ * O texto do registro de sistema que o encerramento deixa.
+ *
+ * Ele **nomeia o desfecho**, e não só o fato: "Negócio encerrado." responderia
+ * quando a negociação acabou, e a pergunta que o gestor faz ao reconstituí-la é
+ * como ela acabou. O estágio não entra na frase — encerrar move para Fechado
+ * sempre, e dizê-lo seria repetir o que a palavra "encerrado" já diz.
+ *
+ * Um registro só para o que é uma escrita só: encerrar preenche resultado, data
+ * de fechamento e estágio numa operação (ADR-0003), e emitir também um "estágio
+ * alterado para Fechado" ao lado contaria o mesmo acontecimento duas vezes.
+ */
+export const dealCloseRecord = (result: ClosedDealResult): string =>
+  `Negócio encerrado como ${DEAL_RESULT_LABELS[result]}.`;
