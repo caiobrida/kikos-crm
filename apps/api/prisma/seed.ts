@@ -1,14 +1,21 @@
-import type { DealResult, DealStage, LeadSource, LeadStatus } from '@kikos/domain';
+import {
+  stageMoveRecord,
+  type CommentKind,
+  type DealResult,
+  type DealStage,
+  type LeadSource,
+  type LeadStatus,
+} from '@kikos/domain';
 import { hashPassword } from '../src/auth/password';
 import { createPrismaClient } from '../src/prisma';
 
 /*
  * Os dados de exemplo: o gestor e os três vendedores dos mockups, a carteira de
- * contatos da lista de Leads, e o funil que o board mostra no primeiro acesso.
+ * contatos da lista de Leads, o funil que o board mostra no primeiro acesso, e a
+ * linha do tempo dos negócios que o detalhamento abre.
  *
  * O CRM aberto pela primeira vez precisa se parecer com o desenho, então os
- * nomes daqui são os mesmos que aparecem nos cards e nas tabelas. Comentários
- * entram na fatia da linha do tempo.
+ * nomes daqui são os mesmos que aparecem nos cards e nas tabelas.
  *
  * O seed é idempotente: `upsert` por e-mail para os Users e por identificador
  * fixo para Leads e Deals. Rodá-lo duas vezes não duplica ninguém e não derruba
@@ -259,7 +266,7 @@ interface SeedDeal {
   readonly lastInteractionDaysAgo: number;
 }
 
-const DEALS: readonly SeedDeal[] = [
+const DEALS = [
   {
     title: 'Kit de halteres emborrachados',
     valueInCents: 840_000,
@@ -495,6 +502,118 @@ const DEALS: readonly SeedDeal[] = [
     expectedCloseInDays: null,
     lastInteractionDaysAgo: 20,
   },
+  /* `as const satisfies`, como na carteira: o `satisfies` cobra que cada linha
+     seja um `SeedDeal` de verdade, e o `as const` preserva os títulos, de onde
+     sai o `SeedDealTitle` abaixo. É o que faz um comentário apontar para um
+     negócio inexistente quebrar o typecheck, em vez de estourar na inserção. */
+] as const satisfies readonly SeedDeal[];
+
+type SeedDealTitle = (typeof DEALS)[number]['title'];
+
+/*
+ * ---------------------------------------------------------------------------
+ * A linha do tempo
+ * ---------------------------------------------------------------------------
+ *
+ * Os negócios mais adiantados do funil abrem com histórico, que é o que faz o
+ * detalhamento se parecer com o mockup no primeiro acesso. A distribuição
+ * também não é aleatória:
+ *
+ * - **as duas espécies convivem** em mais de um negócio, e é isso que mostra a
+ *   distinção visual entre o que uma pessoa escreveu e o que o sistema
+ *   registrou sem que ninguém precise arrastar um card antes;
+ * - o texto dos registros de sistema sai de `stageMoveRecord`, a **mesma**
+ *   função que a rota de movimentação usa — dado de exemplo escrito à mão logo
+ *   divergiria do que o produto grava;
+ * - os negócios recém-abertos ficam sem histórico, que é o estado de quem
+ *   acabou de cadastrar um.
+ */
+interface SeedComment {
+  readonly deal: SeedDealTitle;
+  readonly kind: CommentKind;
+  readonly body: string;
+  readonly author: SeedUserEmail;
+  readonly daysAgo: number;
+}
+
+const COMMENTS: readonly SeedComment[] = [
+  {
+    deal: 'Esteiras profissionais — unidade Morumbi',
+    kind: 'SYSTEM',
+    body: stageMoveRecord('NEW', 'CONTACT_MADE'),
+    author: 'ana.nogueira@kikos.com.br',
+    daysAgo: 9,
+  },
+  {
+    deal: 'Esteiras profissionais — unidade Morumbi',
+    kind: 'USER',
+    body: 'Visitei a unidade. São doze esteiras da linha antiga, todas com mais de seis anos de uso.',
+    author: 'ana.nogueira@kikos.com.br',
+    daysAgo: 7,
+  },
+  {
+    deal: 'Esteiras profissionais — unidade Morumbi',
+    kind: 'SYSTEM',
+    body: stageMoveRecord('CONTACT_MADE', 'PROPOSAL_SENT'),
+    author: 'ana.nogueira@kikos.com.br',
+    daysAgo: 3,
+  },
+  {
+    deal: 'Esteiras profissionais — unidade Morumbi',
+    kind: 'USER',
+    body: 'Proposta enviada com instalação e um ano de manutenção inclusos. A Juliana leva ao comitê na quinta.',
+    author: 'ana.nogueira@kikos.com.br',
+    daysAgo: 0,
+  },
+  {
+    deal: 'Sala de musculação completa',
+    kind: 'SYSTEM',
+    body: stageMoveRecord('CONTACT_MADE', 'PROPOSAL_SENT'),
+    author: 'caio.brida@kikos.com.br',
+    daysAgo: 4,
+  },
+  {
+    deal: 'Sala de musculação completa',
+    kind: 'USER',
+    body: 'Apresentei ao conselho depois da feira. Pediram para desmembrar o orçamento por sala.',
+    author: 'caio.brida@kikos.com.br',
+    daysAgo: 1,
+  },
+  {
+    deal: 'Contrato guarda-chuva das cinco unidades',
+    kind: 'SYSTEM',
+    body: stageMoveRecord('PROPOSAL_SENT', 'NEGOTIATION'),
+    author: 'caio.brida@kikos.com.br',
+    daysAgo: 6,
+  },
+  {
+    deal: 'Contrato guarda-chuva das cinco unidades',
+    kind: 'USER',
+    body: 'Financeiro pediu desconto por volume. Levei 8% e eles voltaram pedindo 12%.',
+    author: 'caio.brida@kikos.com.br',
+    daysAgo: 1,
+  },
+  {
+    deal: 'Renovação do parque de máquinas',
+    kind: 'USER',
+    body: 'Cliente quer fechar as duas unidades juntas para conseguir preço melhor.',
+    author: 'ana.nogueira@kikos.com.br',
+    daysAgo: 11,
+  },
+  {
+    deal: 'Academia do hotel — equipamento completo',
+    kind: 'USER',
+    body: 'Entrega e montagem concluídas. O Paulo topou nos indicar para as outras unidades da rede.',
+    author: 'maria.silva@kikos.com.br',
+    daysAgo: 25,
+  },
+  {
+    deal: 'Ampliação do espaço de crossfit',
+    kind: 'USER',
+    body: 'Perdemos por prazo: o concorrente entregava em três semanas e nós em oito.',
+    author: 'caio.brida@kikos.com.br',
+    daysAgo: 8,
+  },
 ];
 
 /**
@@ -510,6 +629,16 @@ const leadId = (index: number): string =>
 /** O mesmo para os Deals, noutra faixa, pelo mesmo motivo. */
 const dealId = (index: number): string =>
   `22222222-3333-4444-8555-${String(index + 1).padStart(12, '0')}`;
+
+/**
+ * E o mesmo para os registros da linha do tempo.
+ *
+ * Aqui o identificador estável importa mais que nos outros: comentário não se
+ * edita nem se remove, então um seed que inserisse em vez de fazer `upsert`
+ * duplicaria o histórico a cada execução — e não haveria rota para limpar.
+ */
+const commentId = (index: number): string =>
+  `33333333-4444-4555-8666-${String(index + 1).padStart(12, '0')}`;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -562,6 +691,8 @@ try {
     leadIdByEmail.set(lead.email, leadId(index));
   }
 
+  const dealIdByTitle = new Map<string, string>();
+
   for (const [index, deal] of DEALS.entries()) {
     const ownerId = userIdByEmail.get(deal.owner);
     const dealLeadId = leadIdByEmail.get(deal.lead);
@@ -600,11 +731,39 @@ try {
       update: data,
       create: { id: dealId(index), ...data },
     });
+
+    dealIdByTitle.set(deal.title, dealId(index));
+  }
+
+  for (const [index, comment] of COMMENTS.entries()) {
+    const authorId = userIdByEmail.get(comment.author);
+    const commentDealId = dealIdByTitle.get(comment.deal);
+    if (authorId === undefined || commentDealId === undefined) {
+      throw new Error(
+        `O registro "${comment.body}" aponta para um negócio ou autor fora do seed.`,
+      );
+    }
+
+    // O campo é renomeado na desestruturação porque `daysAgo` já é o nome da
+    // função que converte "há N dias" em data absoluta, logo acima.
+    const { deal: _deal, author: _author, daysAgo: written, ...fields } = comment;
+    const data = {
+      ...fields,
+      dealId: commentDealId,
+      authorId,
+      createdAt: daysAgo(written),
+    };
+
+    await prisma.comment.upsert({
+      where: { id: commentId(index) },
+      update: data,
+      create: { id: commentId(index), ...data },
+    });
   }
 
   console.log(
-    `Seed: ${USERS.length} usuários, ${LEADS.length} leads e ${DEALS.length} negócios. ` +
-      `Senha de todos: ${SEED_PASSWORD}`,
+    `Seed: ${USERS.length} usuários, ${LEADS.length} leads, ${DEALS.length} negócios ` +
+      `e ${COMMENTS.length} registros na linha do tempo. Senha de todos: ${SEED_PASSWORD}`,
   );
 } finally {
   await prisma.$disconnect();

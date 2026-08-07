@@ -15,15 +15,15 @@ o fecha, e o link pode ser mandado para um colega.
 
 **Branch:** `feat/deal-detail-modal`
 
-- [ ] Clicar num card abre o painel lateral; o botão do painel abre o modal
-- [ ] Recarregar a página com o modal aberto mantém o modal aberto
-- [ ] O botão voltar do navegador fecha o modal e devolve ao board
-- [ ] O modal mostra o dossiê do cliente com os dados do Lead vinculado
-- [ ] Comentar faz o comentário aparecer no topo da linha do tempo, com autor e horário
-- [ ] Registros de sistema são visualmente distintos dos comentários escritos
-- [ ] Mover um card passa a deixar registro de sistema na linha do tempo
-- [ ] Comentar atualiza a última interação do negócio e do Lead
-- [ ] Testes cobrem que comentar atualiza a última interação e que mover gera registro de sistema
+- [x] Clicar num card abre o painel lateral; o botão do painel abre o modal
+- [x] Recarregar a página com o modal aberto mantém o modal aberto
+- [x] O botão voltar do navegador fecha o modal e devolve ao board
+- [x] O modal mostra o dossiê do cliente com os dados do Lead vinculado
+- [x] Comentar faz o comentário aparecer no topo da linha do tempo, com autor e horário
+- [x] Registros de sistema são visualmente distintos dos comentários escritos
+- [x] Mover um card passa a deixar registro de sistema na linha do tempo
+- [x] Comentar atualiza a última interação do negócio e do Lead
+- [x] Testes cobrem que comentar atualiza a última interação e que mover gera registro de sistema
 
 ## Decisões que valem lembrar
 

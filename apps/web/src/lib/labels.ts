@@ -1,6 +1,6 @@
 import type {
+  CommentKind,
   DealResult,
-  DealStage,
   LeadSource,
   LeadStatus,
   UserRole,
@@ -10,23 +10,36 @@ import type {
  * O mapa único de rótulos: código e banco em inglês, interface em português.
  * Sem biblioteca de internacionalização — o produto tem um idioma só.
  *
- * `Record<DealStage, string>` é o que torna isto seguro: acrescentar um Stage
+ * `Record<DealResult, string>` é o que torna isto seguro: acrescentar um valor
  * no pacote de domínio e esquecer o rótulo aqui quebra o typecheck, em vez de
- * aparecer como uma coluna sem nome na tela.
+ * aparecer como um selo sem nome na tela.
  */
 
-export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
-  NEW: 'Novo',
-  CONTACT_MADE: 'Contato feito',
-  PROPOSAL_SENT: 'Proposta enviada',
-  NEGOTIATION: 'Negociação',
-  CLOSED: 'Fechado',
-};
+/*
+ * Os nomes dos estágios são a exceção: eles moram no pacote compartilhado, e não
+ * aqui. Deixaram de ser só interface quando o registro de sistema da linha do
+ * tempo passou a gravar a frase pronta no banco — é o servidor quem a escreve.
+ * O re-export mantém o import de todo mundo apontando para este arquivo, que
+ * continua sendo o lugar onde se procura um rótulo.
+ */
+export { DEAL_STAGE_LABELS } from '@kikos/domain';
 
 export const DEAL_RESULT_LABELS: Record<DealResult, string> = {
   OPEN: 'Em aberto',
   WON: 'Ganho',
   LOST: 'Perdido',
+};
+
+/*
+ * O que cada espécie de registro da linha do tempo é.
+ *
+ * A distinção entre o que uma pessoa escreveu e o que o sistema registrou é
+ * feita na tela por cor, forma e ícone — e nenhuma das três chega a quem usa
+ * leitor de tela. Estes rótulos são a versão em texto dessa mesma distinção.
+ */
+export const COMMENT_KIND_LABELS: Record<CommentKind, string> = {
+  USER: 'Comentário',
+  SYSTEM: 'Registro do sistema',
 };
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {

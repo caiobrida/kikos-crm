@@ -86,6 +86,18 @@ export const LEAD_SOURCES = [
   'OTHER',
 ] as const satisfies readonly LeadSource[];
 
+/**
+ * A espécie de um Comment: escrito por uma pessoa (`USER`) ou gerado pelo
+ * sistema ao registrar uma ação (`SYSTEM`).
+ *
+ * As duas espécies convivem na mesma tabela, distinguidas por este campo, em vez
+ * de em duas tabelas com duas leituras: a linha do tempo é **uma** sequência, e
+ * juntá-la depois exigiria ordenar dois conjuntos por data toda vez que alguém
+ * abrisse um negócio. O que muda entre elas é só como a tela as desenha.
+ */
+export const CommentKind = Schema.Literal('USER', 'SYSTEM');
+export type CommentKind = typeof CommentKind.Type;
+
 /** O papel de um User. Rótulo para listar vendedores, não regra de acesso. */
 export const UserRole = Schema.Literal('MANAGER', 'SELLER');
 export type UserRole = typeof UserRole.Type;

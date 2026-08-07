@@ -2,6 +2,7 @@ import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_STAGES,
   DealBoard,
+  DealDetail,
   DealListItem,
   DealPage,
   DealSortBy,
@@ -376,6 +377,139 @@ describe('GET /deals', () => {
     it('recusa um pageSize que pediria o funil inteiro', async () => {
       await expectRejection('?pageSize=100000', 'pageSize');
     });
+  });
+});
+
+/*
+ * O contrato de `GET /deals/:id`.
+ *
+ * É a consulta que o painel lateral e o modal de detalhamento compartilham — uma
+ * só, e não duas. O que ela tem de próprio em relação ao card do board é o
+ * **dossiê do cliente**: telefone, e-mail e cargo do Lead, que o card não
+ * carrega porque num funil de cinco colunas seriam dados repetidos que ninguém
+ * lê, e que aqui são o motivo de a seção existir.
+ */
+describe('GET /deals/:id', () => {
+  /** O negócio que este bloco abre. Está em Novo, do contato Ana Beatriz. */
+  const DEAL_TITLE = 'Esteiras para a sala principal';
+
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(DEAL_TITLE);
+  });
+
+  const detailOf = async (id: string = deal.id): Promise<DealDetail> => {
+    const response = await harness.get(`/deals/${id}`);
+
+    expect(response.statusCode).toBe(200);
+    return Schema.decodeUnknownSync(DealDetail)(response.json());
+  };
+
+  it('recusa quem não está logado', async () => {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/deals/${deal.id}`,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('devolve o negócio com os dados que o card não carrega', async () => {
+    const detail = await detailOf();
+
+    expect(detail.id).toBe(deal.id);
+    expect(detail.title).toBe(DEAL_TITLE);
+    expect(detail.valueInCents).toBe(deal.valueInCents);
+    // Onde o negócio está × se ele terminou e como: as duas dimensões, sempre.
+    expect(detail.stage).toBe('NEW');
+    expect(detail.result).toBe('OPEN');
+    expect(detail.closedAt).toBeNull();
+    expect(detail.lastInteractionAt).toBeInstanceOf(Date);
+  });
+
+  it('devolve o dossiê do cliente, com telefone e e-mail', async () => {
+    const { lead } = await detailOf();
+
+    // É o que responde "para qual número eu ligo?" sem sair do detalhamento.
+    expect(lead.name).toBe('Ana Beatriz Souza');
+    expect(lead.company).toBe('Studio Corpo Livre');
+    expect(lead.email).toBe('ana.souza@corpolivre.com.br');
+    expect(lead.phone).not.toBe('');
+    expect(lead.jobTitle).toBe('Gerente de Operações');
+  });
+
+  it('devolve `null` no cargo de quem não informou', async () => {
+    const other = await dealNamed('Reforma da sala de musculação');
+
+    // `null` e não `""`: o campo é opcional no cadastro, e a tela desenha
+    // "não informado" em vez de uma linha vazia.
+    expect((await detailOf(other.id)).lead.jobTitle).toBeNull();
+  });
+
+  it('separa o responsável pelo negócio do responsável pelo contato', async () => {
+    const detail = await detailOf();
+
+    // Quem prospecta nem sempre é quem fecha: os dois campos existem porque as
+    // duas pessoas podem ser diferentes.
+    expect(detail.owner.id).toBe(harness.seller.id);
+    expect(detail.lead.owner.id).toBe(harness.seller.id);
+  });
+
+  it('devolve o resultado e a data de fechamento de um negócio encerrado', async () => {
+    const closed = columnOf(await board(), 'CLOSED').deals.at(0);
+    const detail = await detailOf(closed?.id ?? '');
+
+    // Estágio e resultado nascem juntos no encerramento (ADR-0003), e o modal
+    // precisa dos dois para dizer se a venda foi ganha ou perdida.
+    expect(detail.stage).toBe('CLOSED');
+    expect(detail.result).not.toBe('OPEN');
+    expect(detail.closedAt).toBeInstanceOf(Date);
+  });
+
+  it('não devolve o e-mail nem o hash de senha dos responsáveis', async () => {
+    const response = await harness.get(`/deals/${deal.id}`);
+
+    // Os responsáveis embutidos são só identificador e nome — ver `UserSummary`.
+    // O e-mail que aparece na resposta é o do cliente, que é o ponto do dossiê.
+    expect(JSON.stringify(response.json())).not.toContain('@kikos.com.br');
+  });
+
+  it('devolve 404 quando o negócio não existe', async () => {
+    const response = await harness.get(`/deals/${randomUUID()}`);
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json<{ error: string }>().error).toBe('DealNotFound');
+  });
+
+  it('devolve 404 quando o negócio foi removido', async () => {
+    const removed = harness.deals.find((record) => record.title === DELETED_DEAL_TITLE);
+    const response = await harness.get(`/deals/${removed?.id ?? ''}`);
+
+    // Negócio removido não existe para quem lê — nem pelo link direto.
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('recusa um identificador que não é UUID', async () => {
+    const response = await harness.get('/deals/o-negocio-de-ontem');
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json<{ error: string; issues: { path: string }[] }>();
+    expect(body.error).toBe('ValidationFailed');
+    expect(body.issues.map((issue) => issue.path)).toContain('id');
+  });
+
+  it('não é confundida com a rota do board', async () => {
+    /*
+     * `/deals/board` é estática e `/deals/:id` é paramétrica: no Fastify a
+     * estática vence independentemente da ordem de registro. Este teste é a
+     * trava contra o dia em que alguém reordenar as rotas e o board virar uma
+     * consulta por identificador malformado.
+     */
+    const response = await harness.get('/deals/board');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ columns?: unknown }>().columns).toBeDefined();
   });
 });
 

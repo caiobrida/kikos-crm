@@ -29,3 +29,40 @@ export const formatLastInteraction = (moment: Date, now: Date = new Date()): str
 
   return moment.toLocaleDateString('pt-BR');
 };
+
+/** A hora do dia, com dois dígitos em cada metade. */
+const clockOf = (moment: Date): string =>
+  moment.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * O momento de um item da linha do tempo.
+ *
+ * A diferença para `formatLastInteraction` é a hora, e ela não é enfeite: uma
+ * coluna de tabela responde "posso ligar de novo?", que se resolve em dias; o
+ * histórico de uma negociação responde "o que aconteceu, e nessa ordem?", e dois
+ * registros do mesmo dia precisam se distinguir. "hoje" em três itens seguidos
+ * não conta história nenhuma.
+ *
+ * Perto do presente o dia vira palavra e a hora fica; longe dele a data volta
+ * inteira, pela mesma razão de sempre — "há 3 semanas às 14:32" é precisão que
+ * ninguém pediu.
+ */
+export const formatMoment = (moment: Date, now: Date = new Date()): string => {
+  const days = Math.round((startOfDay(now) - startOfDay(moment)) / DAY_MS);
+
+  if (days <= 0) return `hoje às ${clockOf(moment)}`;
+  if (days === 1) return `ontem às ${clockOf(moment)}`;
+
+  return `${moment.toLocaleDateString('pt-BR')} às ${clockOf(moment)}`;
+};
+
+/**
+ * Uma data de calendário — a prevista de fechamento, a de encerramento.
+ *
+ * Sem hora, e é de propósito: o campo é um dia informado por quem cadastra, não
+ * um instante (ver `OptionalDate` no pacote de domínio). O fuso é fixado em UTC
+ * pela mesma razão que o Schema o fixa lá — senão "20/09" apareceria como "19/09"
+ * para quem abrisse a tela a oeste de Greenwich.
+ */
+export const formatDay = (day: Date): string =>
+  day.toLocaleDateString('pt-BR', { timeZone: 'UTC' });

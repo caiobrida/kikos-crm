@@ -15,6 +15,7 @@ import {
   boardColumnQuery,
   type DealColumn,
   type DealRecord,
+  type DealWithDossier,
   type DealWithRelations,
 } from './DealRepository';
 import { escapeLikeWildcards } from './like';
@@ -76,6 +77,52 @@ const toDealRecord = (row: DealRecordRow): DealRecord => ({
   id: row.id as DealId,
   leadId: row.leadId as LeadId,
   ownerId: row.ownerId as UserId,
+});
+
+/**
+ * O `SELECT` do detalhamento: o negócio inteiro, com o **dossiê** do cliente em
+ * vez do resumo do card — telefone, e-mail e cargo, mais o responsável pelo
+ * contato.
+ *
+ * Um `JOIN` mais largo numa consulta que devolve uma linha só. O card do board
+ * não paga por ele: lá o `LIST_SELECT` continua trazendo apenas nome e empresa,
+ * multiplicados por cinco colunas.
+ */
+const DETAIL_SELECT = {
+  id: true,
+  title: true,
+  valueInCents: true,
+  stage: true,
+  result: true,
+  description: true,
+  expectedCloseDate: true,
+  closedAt: true,
+  lastInteractionAt: true,
+  lead: {
+    select: {
+      id: true,
+      name: true,
+      company: true,
+      email: true,
+      phone: true,
+      jobTitle: true,
+      owner: { select: { id: true, name: true } },
+    },
+  },
+  owner: { select: { id: true, name: true } },
+} satisfies Prisma.DealSelect;
+
+type DealDetailRow = Prisma.DealGetPayload<{ select: typeof DETAIL_SELECT }>;
+
+const toDealWithDossier = (row: DealDetailRow): DealWithDossier => ({
+  ...row,
+  id: row.id as DealId,
+  lead: {
+    ...row.lead,
+    id: row.lead.id as LeadId,
+    owner: { id: row.lead.owner.id as UserId, name: row.lead.owner.name },
+  },
+  owner: { id: row.owner.id as UserId, name: row.owner.name },
 });
 
 /** O que o board e a listagem filtram — tudo menos ordem e página. */
@@ -190,6 +237,31 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
             }),
           ).pipe(Option.map(toDealRecord)),
         ),
+
+      detailById: (id) =>
+        Effect.promise(async () =>
+          Option.fromNullable(
+            // O filtro de remoção lógica mora aqui, como em toda leitura.
+            await prisma.deal.findFirst({
+              where: { id, deletedAt: null },
+              select: DETAIL_SELECT,
+            }),
+          ).pipe(Option.map(toDealWithDossier)),
+        ),
+
+      recordDealInteraction: (id, at) =>
+        Effect.promise(async () => {
+          /*
+           * `updateMany`, e não `update`: o caso de uso já conferiu que o
+           * negócio está lá, mas entre a leitura e a escrita ele pode ter sido
+           * removido — e `update` estouraria como defeito onde nada a fazer
+           * resta. Zero linhas afetadas é resposta legítima aqui.
+           */
+          await prisma.deal.updateMany({
+            where: { id, deletedAt: null },
+            data: { lastInteractionAt: at },
+          });
+        }),
 
       moveToStage: (id, move) =>
         Effect.promise(async () => {

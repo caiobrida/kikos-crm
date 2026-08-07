@@ -1,5 +1,10 @@
 import { Effect, Layer, Ref } from 'effect';
 import {
+  CommentRepository,
+  CommentRepositoryInMemory,
+  type CommentRecord,
+} from './CommentRepository';
+import {
   DealRepository,
   DealRepositoryInMemory,
   type DealRecord,
@@ -16,7 +21,7 @@ import {
 } from './UserRepository';
 
 /**
- * Os três repositórios em memória, sobre **um estado só**.
+ * Os quatro repositórios em memória, sobre **um estado só**.
  *
  * É o duble que os testes de API usam no lugar do Prisma — a única substituição
  * do projeto. Abaixo dele roda tudo: rotas, Schema, autenticação e mapa de
@@ -39,21 +44,24 @@ export const InMemoryRepositories = (data: {
   readonly users: readonly UserRecord[];
   readonly leads: readonly LeadRecord[];
   readonly deals: readonly DealRecord[];
-}): Layer.Layer<UserRepository | LeadRepository | DealRepository> =>
+  readonly comments: readonly CommentRecord[];
+}): Layer.Layer<UserRepository | LeadRepository | DealRepository | CommentRepository> =>
   Layer.unwrapEffect(
     Effect.gen(function* () {
       const leads = yield* Ref.make(data.leads);
       const deals = yield* Ref.make(data.deals);
+      const comments = yield* Ref.make(data.comments);
 
       /*
-       * `Layer.mergeAll` compõe os três do mesmo jeito que a produção compõe os
-       * de Prisma. Os Users vão por valor: o CRM não cadastra conta, então não
-       * há escrita para compartilhar.
+       * `Layer.mergeAll` compõe os quatro do mesmo jeito que a produção compõe
+       * os de Prisma. Os Users vão por valor: o CRM não cadastra conta, então
+       * não há escrita para compartilhar.
        */
       return Layer.mergeAll(
         UserRepositoryInMemory(data.users),
         LeadRepositoryInMemory(leads, data.users),
         DealRepositoryInMemory(deals, leads, data.users),
+        CommentRepositoryInMemory(comments, data.users),
       );
     }),
   );

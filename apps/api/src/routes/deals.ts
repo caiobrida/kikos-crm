@@ -3,6 +3,7 @@ import {
   DealAlreadyClosed,
   DealBoard,
   DealBoardQuery,
+  DealDetail,
   DealId,
   DealListItem,
   DealListQuery,
@@ -17,15 +18,22 @@ import {
   isOpenDealStage,
   leadStatusAfterDealMoved,
   refuseStageMove,
+  stageMoveRecord,
   type DealBoardColumn,
   type StageMoveRefusal,
+  type UserId,
 } from '@kikos/domain';
 import { Clock, Effect, Option, Schema } from 'effect';
 import type { FastifyInstance } from 'fastify';
-import { makeAuthenticate } from '../http/authenticate';
+import { makeAuthenticate, requireCurrentUser } from '../http/authenticate';
 import { makeRunner } from '../http/run';
 import { decodeBody, decodeParams, decodeQuery } from '../http/validation';
-import { DealRepository, type DealWithRelations } from '../repositories/DealRepository';
+import { CommentRepository } from '../repositories/CommentRepository';
+import {
+  DealRepository,
+  type DealWithDossier,
+  type DealWithRelations,
+} from '../repositories/DealRepository';
 import { LeadRepository } from '../repositories/LeadRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import type { AppRuntime } from '../runtime';
@@ -178,6 +186,35 @@ const createDeal = (
  */
 const DealIdParams = Schema.Struct({ id: DealId });
 
+/**
+ * Abre um negócio — a consulta que o painel lateral e o modal compartilham.
+ *
+ * **Uma consulta para as duas telas, e não duas.** O painel usa a parte de cima
+ * do que volta (título, valor, selo, Lead, responsável, última interação) e o
+ * modal usa o resto; como a chave de cache é a mesma no navegador, abrir o
+ * detalhamento a partir do painel não custa ida nenhuma ao servidor — e há um
+ * cache só a invalidar quando alguém comenta.
+ *
+ * Não há regra de negócio aqui além da que existe em toda leitura de registro
+ * pelo identificador: quem não existe — ou foi removido — não existe para quem
+ * lê, e é o repositório quem aplica o filtro.
+ */
+const openDeal = (
+  id: DealId,
+): Effect.Effect<DealWithDossier, DealNotFound, DealRepository> =>
+  Effect.gen(function* () {
+    const deals = yield* DealRepository;
+    const found = yield* deals.detailById(id);
+
+    if (Option.isNone(found)) {
+      return yield* Effect.fail(
+        new DealNotFound({ message: 'Este negócio não existe mais.' }),
+      );
+    }
+
+    return found.value;
+  });
+
 /** A recusa da regra pura, como o erro de domínio que a rota devolve. */
 const stageMoveError = (
   refusal: StageMoveRefusal,
@@ -205,7 +242,7 @@ const stageMoveError = (
  * pura que o board consulta antes de aceitar o drop (`refuseStageMove`, no
  * pacote compartilhado), e é esse compartilhamento que garante que o card que o
  * navegador recusa é exatamente o que a API recusaria. O que sobra para cá são
- * as três coisas que só o servidor sabe ou pode fazer:
+ * as quatro coisas que só o servidor sabe ou pode fazer:
  *
  * 1. **o negócio ainda existe, e em que coluna ele está de verdade?** O board
  *    da tela é de um instante atrás; outra pessoa pode ter movido ou removido o
@@ -214,19 +251,24 @@ const stageMoveError = (
  *    subir para o topo da coluna de destino.
  * 3. **sincronizar o contato vinculado**: o status do Lead acompanha o
  *    movimento, com a regra "último evento vence".
+ * 4. **deixar o registro na linha do tempo**, para que o gestor reconstitua
+ *    depois como a negociação evoluiu. É a metade que faltava desta rota: a
+ *    fatia que a escreveu deixou o histórico para a que é dona da linha do
+ *    tempo inteira, e é por isso que ela ganhou aqui uma dependência a mais.
  *
- * As duas escritas não compartilham transação, pelo mesmo motivo do cadastro: a
- * seam de teste está acima dos repositórios. O pior caso é um negócio movido
- * com o status do contato um passo atrás, e a próxima ação sobre o Deal o
- * corrige.
+ * As escritas não compartilham transação, pelo mesmo motivo do cadastro: a seam
+ * de teste está acima dos repositórios. O pior caso é um negócio movido com o
+ * status do contato um passo atrás, e a próxima ação sobre o Deal o corrige.
  */
 const moveDealStage = (
   id: DealId,
   input: MoveDealStageInput,
+  /** Quem arrastou o card: é essa pessoa que assina o registro de sistema. */
+  actor: UserId,
 ): Effect.Effect<
   DealWithRelations,
   DealNotFound | InvalidStageTransition | DealAlreadyClosed,
-  DealRepository | LeadRepository
+  DealRepository | LeadRepository | CommentRepository
 > =>
   Effect.gen(function* () {
     const deals = yield* DealRepository;
@@ -260,6 +302,26 @@ const moveDealStage = (
     const moved = yield* deals.moveToStage(id, { stage: input.stage, at: now });
 
     /*
+     * O registro de sistema, com o **mesmo** `now` do movimento: o item no topo
+     * da linha do tempo e o card no topo da coluna descrevem o mesmo instante.
+     *
+     * Só quando o estágio muda de verdade. `PATCH` com o estágio atual é
+     * idempotente — a regra o deixa passar de propósito —, e registrar "estágio
+     * alterado de Novo para Novo" encheria o histórico de ruído que ninguém
+     * pode apagar depois.
+     */
+    if (deal.stage !== input.stage) {
+      const comments = yield* CommentRepository;
+      yield* comments.create({
+        dealId: id,
+        kind: 'SYSTEM',
+        body: stageMoveRecord(deal.stage, input.stage),
+        authorId: actor,
+        createdAt: now,
+      });
+    }
+
+    /*
      * O contato é sincronizado em toda movimentação, mas nem toda movimentação
      * mexe no selo: a regra devolve `undefined` quando o estágio de destino não
      * é evento de status, e aí só a data anda. O campo é omitido em vez de ir
@@ -282,9 +344,9 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
   const authenticate = makeAuthenticate(runtime);
 
   /*
-   * Registrado antes de qualquer `/deals/:id` que venha nas próximas fatias: no
-   * Fastify a rota estática vence a paramétrica independentemente da ordem, mas
-   * ler as duas na ordem em que são resolvidas evita a dúvida.
+   * Registrado antes de `/deals/:id`: no Fastify a rota estática vence a
+   * paramétrica independentemente da ordem, mas ler as duas na ordem em que são
+   * resolvidas evita a dúvida.
    */
   app.get('/deals/board', { preHandler: authenticate }, (request, reply) => {
     const program = decodeQuery(DealBoardQuery, request.query).pipe(
@@ -304,6 +366,17 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
     return run(reply, program, (reply, page) =>
       // O mesmo Schema que o app web usa para decodificar a resposta.
       reply.send(Schema.encodeSync(DealPage)(page)),
+    );
+  });
+
+  app.get('/deals/:id', { preHandler: authenticate }, (request, reply) => {
+    const program = decodeParams(DealIdParams, request.params).pipe(
+      Effect.flatMap((params) => openDeal(params.id)),
+    );
+
+    return run(reply, program, (reply, deal) =>
+      // O mesmo Schema que o painel lateral e o modal usam para decodificar.
+      reply.send(Schema.encodeSync(DealDetail)(deal)),
     );
   });
 
@@ -330,10 +403,15 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
    * formulário completo na fatia que a implementa.
    */
   app.patch('/deals/:id/stage', { preHandler: authenticate }, (request, reply) => {
+    // Quem move assina o registro de sistema. O `preHandler` acima é o que
+    // garante que a sessão existe; `requireCurrentUser` transforma essa garantia
+    // em um tipo não-nulável.
+    const actor = requireCurrentUser(request).id;
+
     const program = Effect.all([
       decodeParams(DealIdParams, request.params),
       decodeBody(MoveDealStageInput, request.body),
-    ]).pipe(Effect.flatMap(([params, input]) => moveDealStage(params.id, input)));
+    ]).pipe(Effect.flatMap(([params, input]) => moveDealStage(params.id, input, actor)));
 
     return run(reply, program, (reply, deal) =>
       /*

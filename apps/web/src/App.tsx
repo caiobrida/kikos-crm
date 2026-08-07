@@ -37,6 +37,14 @@ export const App = () => (
 
         <Route path="/negocios" element={<DealsBoardPage />} />
 
+        {/*
+          O detalhamento de um negócio é um modal, **e uma rota**: a mesma tela
+          de board responde por este caminho e desenha o modal por cima. É o que
+          faz recarregar manter o modal aberto, o botão voltar fechá-lo, e o
+          link ser compartilhável — sem que o funil deixe de estar por trás.
+        */}
+        <Route path="/negocios/:dealId" element={<DealsBoardPage />} />
+
         <Route
           path="/vendedores"
           element={

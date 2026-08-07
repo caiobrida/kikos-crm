@@ -39,6 +39,8 @@ export interface BoardColumnProps {
   /** O card que está sendo arrastado neste instante, se houver algum. */
   readonly dragging: DealListItem | undefined;
   readonly onMove: (deal: DealListItem, to: DealStage) => void;
+  /** Abre o resumo do negócio no painel lateral. Só atravessa a coluna. */
+  readonly onOpen: (deal: DealListItem) => void;
   readonly onDragStart: (deal: DealListItem) => void;
   readonly onDragEnd: () => void;
 }
@@ -48,6 +50,7 @@ export const BoardColumn = ({
   view,
   dragging,
   onMove,
+  onOpen,
   onDragStart,
   onDragEnd,
 }: BoardColumnProps) => {
@@ -140,6 +143,7 @@ export const BoardColumn = ({
               key={deal.id}
               deal={deal}
               onMove={onMove}
+              onOpen={onOpen}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               isDragging={dragging?.id === deal.id}
