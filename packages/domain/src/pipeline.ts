@@ -69,9 +69,14 @@ export type StageMoveRefusal = 'DealAlreadyClosed' | 'InvalidStageTransition';
  *    aconteceu — mesmo quando o destino também seria inválido por si só.
  * 2. **`CLOSED` não é destino de movimentação.** Chega-se nele marcando Ganho
  *    ou Perdido, e por nenhum outro caminho; arrastar para lá não move nada.
+ *    (Na fatia que encerra negócios, esse mesmo gesto passa a abrir a escolha
+ *    entre Ganho e Perdido — ADR-0003. A regra daqui não muda: o que muda é o
+ *    que a tela faz com a recusa.)
  *
  * Entre os quatro abertos o movimento é livre **nos dois sentidos**, e sem
- * pular etapa: negociação real avança, recua e às vezes salta.
+ * pular etapa: negociação real avança, recua e às vezes salta. Mover para o
+ * estágio em que o negócio já está também passa: `PATCH` é idempotente, e
+ * recusar inventaria um erro que a tabela do spec não tem.
  *
  * O estágio de origem basta para saber que um negócio está encerrado: o estado
  * "estágio Fechado com resultado em aberto" é inalcançável por construção

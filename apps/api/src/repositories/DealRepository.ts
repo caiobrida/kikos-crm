@@ -329,6 +329,18 @@ export const DealRepositoryInMemory = (
         };
       };
 
+      /**
+       * O negócio de identificador `id` que ainda existe para quem lê.
+       *
+       * O filtro de remoção lógica não é repetido em cada caminho: ele é este
+       * predicado, e é o mesmo que a Layer de Prisma escreve como
+       * `where: { id, deletedAt: null }`.
+       */
+      const isVisible =
+        (id: DealId) =>
+        (deal: DealRecord): boolean =>
+          deal.id === id && deal.deletedAt === null;
+
       /*
        * O funil e a carteira lidos no mesmo instante. Ler os dois a cada
        * consulta, em vez de guardar os Leads na montagem, é o que faz um
@@ -376,29 +388,25 @@ export const DealRepositoryInMemory = (
           }),
 
         findById: (id) =>
+          // O filtro de remoção lógica vale aqui como em toda leitura.
           Ref.get(store).pipe(
-            Effect.map((deals) =>
-              Option.fromNullable(
-                // O filtro de remoção lógica vale aqui como em toda leitura.
-                deals.find((deal) => deal.id === id && deal.deletedAt === null),
-              ),
-            ),
+            Effect.map((deals) => Option.fromNullable(deals.find(isVisible(id)))),
           ),
 
         moveToStage: (id, move) =>
           Effect.gen(function* () {
             const moved = { stage: move.stage, lastInteractionAt: move.at };
 
+            /*
+             * `Ref.updateAndGet` é o `update` seguido de leitura, numa operação
+             * atômica: em TypeScript comum seria `store = f(store); return store`,
+             * com a diferença de que aqui ninguém pode ler entre as duas metades.
+             */
             const deals = yield* Ref.updateAndGet(store, (current) =>
-              current.map((deal) =>
-                // A mesma cláusula de remoção do `updateMany` do Prisma.
-                deal.id === id && deal.deletedAt === null ? { ...deal, ...moved } : deal,
-              ),
+              current.map((deal) => (isVisible(id)(deal) ? { ...deal, ...moved } : deal)),
             );
 
-            const deal = deals.find(
-              (candidate) => candidate.id === id && candidate.deletedAt === null,
-            );
+            const deal = deals.find(isVisible(id));
             if (deal === undefined) {
               // Defeito, não erro de domínio: o caso de uso já conferiu com
               // `findById` que o negócio está lá antes de mandar movê-lo.

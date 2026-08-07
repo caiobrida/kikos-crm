@@ -29,7 +29,8 @@ import { DealCard } from './DealCard';
  * de qualquer ida ao servidor: `refuseStageMove` — a **mesma função** que a
  * rota consulta — decide se este estágio aceita o card que está no ar. Uma
  * coluna que recusa não chama `preventDefault`, e o navegador desenha o cursor
- * de "não pode" e nem chega a disparar o drop.
+ * de "não pode" e nem chega a disparar o drop. Ela também diz por quê, num
+ * aviso sobreposto que não desloca o board enquanto o card está no ar.
  */
 export interface BoardColumnProps {
   readonly column: DealBoardColumn;
@@ -40,8 +41,6 @@ export interface BoardColumnProps {
   readonly onMove: (deal: DealListItem, to: DealStage) => void;
   readonly onDragStart: (deal: DealListItem) => void;
   readonly onDragEnd: () => void;
-  /** Anuncia por que esta coluna não aceita o card que passou por cima. */
-  readonly onRefuse: (reason: string) => void;
 }
 
 export const BoardColumn = ({
@@ -51,7 +50,6 @@ export const BoardColumn = ({
   onMove,
   onDragStart,
   onDragEnd,
-  onRefuse,
 }: BoardColumnProps) => {
   const [loadedPages, setLoadedPages] = useState(0);
   const more = useColumnPages(column.stage, view, loadedPages);
@@ -60,16 +58,16 @@ export const BoardColumn = ({
   const remaining = column.total - deals.length;
 
   /*
-   * A recusa do card que está no ar, ou `undefined` se esta coluna o aceita.
-   * Soltar na coluna de onde o card saiu não é movimento nenhum, e por isso
-   * também não é destino.
+   * Esta coluna é destino possível do card que está no ar? Soltar na coluna de
+   * onde o card saiu não é movimento nenhum, e por isso também não é destino.
    */
-  const refusal =
-    dragging === undefined || dragging.stage === column.stage
-      ? undefined
-      : refuseStageMove(dragging.stage, column.stage);
-
   const isDropTarget = dragging !== undefined && dragging.stage !== column.stage;
+
+  /** Por que esta coluna recusa o card no ar, ou `undefined` se ela o aceita. */
+  const refusal = isDropTarget
+    ? refuseStageMove(dragging.stage, column.stage)
+    : undefined;
+
   const accepts = isDropTarget && refusal === undefined;
 
   const handleDragOver = (event: DragEvent<HTMLElement>) => {
@@ -85,12 +83,6 @@ export const BoardColumn = ({
     event.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDragEnter = () => {
-    // O cursor já diz "não pode"; a frase diz por quê. É a mesma que a API
-    // devolveria, porque as duas saem da regra compartilhada.
-    if (refusal !== undefined) onRefuse(STAGE_MOVE_REFUSALS[refusal]);
-  };
-
   const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     if (dragging !== undefined) onMove(dragging, column.stage);
@@ -100,10 +92,9 @@ export const BoardColumn = ({
     <section
       aria-label={DEAL_STAGE_LABELS[column.stage]}
       onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
       onDrop={handleDrop}
       className={cn(
-        'flex w-72 shrink-0 flex-col rounded-card bg-surface-900 ring-1 transition-colors',
+        'relative flex w-72 shrink-0 flex-col rounded-card bg-surface-900 ring-1 transition-colors',
         accepts ? 'ring-2 ring-brand-500 bg-surface-800/60' : 'ring-surface-800',
         // A coluna que recusa some do caminho em vez de convidar ao gesto.
         isDropTarget && !accepts ? 'opacity-50' : '',
@@ -118,6 +109,27 @@ export const BoardColumn = ({
           {column.total}
         </span>
       </header>
+
+      {/*
+        O motivo da recusa, **dentro da coluna que recusa e por cima dela**. Os
+        dois detalhes têm razão de ser: aqui a frase está onde o cursor já está,
+        e sobreposta ela não empurra coluna nenhuma — um aviso que crescesse no
+        fluxo da página deslocaria o board **no meio do arrasto**, e o card
+        cairia numa coluna que não é a que o vendedor mirou.
+
+        A frase é a mesma que a API devolveria, porque as duas saem da regra
+        compartilhada. `aria-hidden` porque ela dura o gesto e não sobrevive ao
+        drop; quem não arrasta nunca a encontra, e a recusa que **acontece** é
+        anunciada pelo aviso do board.
+      */}
+      {refusal === undefined ? null : (
+        <p
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-3 top-14 z-10 rounded-lg bg-surface-950/95 px-3 py-2 text-xs text-lost-300 ring-1 ring-lost-500/40"
+        >
+          {STAGE_MOVE_REFUSALS[refusal]}
+        </p>
+      )}
 
       <div className="flex flex-col gap-2 p-3">
         {deals.length === 0 ? (

@@ -155,7 +155,12 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
            */
           await prisma.lead.updateMany({
             where: { id, deletedAt: null },
-            data: { status: interaction.status, lastInteractionAt: interaction.at },
+            data: {
+              lastInteractionAt: interaction.at,
+              // A coluna fora do `data` é coluna que o `UPDATE` não toca: é
+              // assim que a interação sem status deixa o selo onde está.
+              ...(interaction.status === undefined ? {} : { status: interaction.status }),
+            },
           });
         }),
 

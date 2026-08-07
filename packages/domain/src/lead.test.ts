@@ -184,28 +184,32 @@ describe('leadStatusAfterDealMoved', () => {
     expect(leadStatusAfterDealMoved('NEGOTIATION')).toBe('NEGOTIATION');
   });
 
-  it('devolve o contato a Em contato quando o negócio recua', () => {
+  it('não mexe no selo quando o negócio anda no começo do funil', () => {
     /*
-     * "Último evento vence": recuar é evento como qualquer outro, e um negócio
-     * de volta ao começo do funil descreve um contato em conversa, não em
-     * negociação. Deixar o selo em Em negociação faria a carteira contar uma
-     * história que o board já desmentiu.
+     * A tabela do spec tem uma linha só para movimentação, e estes dois
+     * estágios não estão nela. O `undefined` é essa ausência dita em voz alta:
+     * o movimento vale como interação — a data anda —, mas não é evento de
+     * status.
+     *
+     * Um Lead tem vários Deals. Se recuar rebaixasse o contato para Em contato,
+     * um negócio andando para trás desfaria o Ganho registrado por **outro**.
      */
-    expect(leadStatusAfterDealMoved('NEW')).toBe('CONTACT');
-    expect(leadStatusAfterDealMoved('CONTACT_MADE')).toBe('CONTACT');
+    expect(leadStatusAfterDealMoved('NEW')).toBeUndefined();
+    expect(leadStatusAfterDealMoved('CONTACT_MADE')).toBeUndefined();
   });
 
-  it('concorda com a criação nos estágios em que o negócio nasce parado', () => {
-    // Criar um negócio em Novo e mover um negócio para Novo descrevem a mesma
-    // situação do contato — e por isso dizem o mesmo status.
-    expect(leadStatusAfterDealMoved('NEW')).toBe(LEAD_STATUS_AFTER_DEAL_CREATED);
+  it('não repete o status com que o contato nasce ao ganhar um negócio', () => {
+    // Criar um negócio é evento de status (`CONTACT`); movê-lo para o mesmo
+    // estágio não é. As duas regras existem separadas por isso.
+    expect(LEAD_STATUS_AFTER_DEAL_CREATED).toBe('CONTACT');
+    expect(leadStatusAfterDealMoved('NEW')).not.toBe(LEAD_STATUS_AFTER_DEAL_CREATED);
   });
 
-  it('tem resposta para todos os estágios abertos', () => {
-    // Um estágio novo no funil sem lugar nesta regra deixaria o selo do contato
-    // parado no que ele era antes, sem que nada acusasse.
+  it('responde a todos os estágios abertos', () => {
+    // Um estágio novo no funil precisa passar por aqui para decidir se é evento
+    // de status ou não, em vez de cair num caso que ninguém escreveu.
     for (const stage of OPEN_DEAL_STAGES) {
-      expect(leadStatusAfterDealMoved(stage)).not.toBeUndefined();
+      expect(() => leadStatusAfterDealMoved(stage)).not.toThrow();
     }
   });
 });

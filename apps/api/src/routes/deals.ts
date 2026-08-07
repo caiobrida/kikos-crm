@@ -259,10 +259,19 @@ const moveDealStage = (
 
     const moved = yield* deals.moveToStage(id, { stage: input.stage, at: now });
 
+    /*
+     * O contato é sincronizado em toda movimentação, mas nem toda movimentação
+     * mexe no selo: a regra devolve `undefined` quando o estágio de destino não
+     * é evento de status, e aí só a data anda. O campo é omitido em vez de ir
+     * como `undefined` porque `exactOptionalPropertyTypes` distingue as duas
+     * coisas — e aqui a distinção é justamente a que importa.
+     */
+    const status = leadStatusAfterDealMoved(input.stage);
+
     const leads = yield* LeadRepository;
     yield* leads.recordLeadInteraction(deal.leadId, {
-      status: leadStatusAfterDealMoved(input.stage),
       at: now,
+      ...(status === undefined ? {} : { status }),
     });
 
     return moved;
@@ -320,24 +329,20 @@ export const registerDealRoutes = (app: FastifyInstance, runtime: AppRuntime): v
    * caminho (`/stage`) é o que deixa a rota de edição livre para receber o
    * formulário completo na fatia que a implementa.
    */
-  app.patch<{ Params: unknown }>(
-    '/deals/:id/stage',
-    { preHandler: authenticate },
-    (request, reply) => {
-      const program = Effect.all([
-        decodeParams(DealIdParams, request.params),
-        decodeBody(MoveDealStageInput, request.body),
-      ]).pipe(Effect.flatMap(([params, input]) => moveDealStage(params.id, input)));
+  app.patch('/deals/:id/stage', { preHandler: authenticate }, (request, reply) => {
+    const program = Effect.all([
+      decodeParams(DealIdParams, request.params),
+      decodeBody(MoveDealStageInput, request.body),
+    ]).pipe(Effect.flatMap(([params, input]) => moveDealStage(params.id, input)));
 
-      return run(reply, program, (reply, deal) =>
-        /*
-         * O card no mesmo Schema do board. A tela não o usa para redesenhar a
-         * coluna à mão — ela já mostrou o movimento no instante do gesto e
-         * invalida o cache depois; o corpo é o que confirma o que o servidor de
-         * fato registrou.
-         */
-        reply.send(Schema.encodeSync(DealListItem)(deal)),
-      );
-    },
-  );
+    return run(reply, program, (reply, deal) =>
+      /*
+       * O card no mesmo Schema do board. A tela não o usa para redesenhar a
+       * coluna à mão — ela já mostrou o movimento no instante do gesto e
+       * invalida o cache depois; o corpo é o que confirma o que o servidor de
+       * fato registrou.
+       */
+      reply.send(Schema.encodeSync(DealListItem)(deal)),
+    );
+  });
 };

@@ -7,6 +7,7 @@ import {
   DealSortBy,
   LeadListItem,
   LeadPage,
+  STAGE_MOVE_REFUSALS,
   type DealBoardColumn,
   type DealStage,
 } from '@kikos/domain';
@@ -720,12 +721,27 @@ describe('PATCH /deals/:id/stage', () => {
       expect((await leadNamed(LEAD_NAME)).status).toBe('NEGOTIATION');
     });
 
-    it('devolve o contato a Em contato quando o negócio recua', async () => {
+    it('deixa o selo onde está quando o negócio recua', async () => {
       await move('NEGOTIATION');
       await move('CONTACT_MADE');
 
-      // "Último evento vence": o recuo é evento como qualquer outro.
-      expect((await leadNamed(LEAD_NAME)).status).toBe('CONTACT');
+      /*
+       * Recuar conta como interação, e não como evento de status: a tabela do
+       * spec só promove o contato em Proposta enviada e Negociação. Rebaixá-lo
+       * aqui desfaria, sem que ninguém peça, o que outro negócio do mesmo
+       * contato registrou.
+       */
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEGOTIATION');
+    });
+
+    it('não desfaz o desfecho de um contato que já tem negócio encerrado', async () => {
+      // Daniel Esteves tem um negócio ganho e outro em aberto na fixture.
+      expect((await leadNamed('Daniel Esteves')).status).toBe('WON');
+
+      const other = await dealNamed('Reforma da sala de musculação');
+      await move('NEW', other.id);
+
+      expect((await leadNamed('Daniel Esteves')).status).toBe('WON');
     });
 
     it('registra o movimento como última interação do contato', async () => {
@@ -735,6 +751,18 @@ describe('PATCH /deals/:id/stage', () => {
       expect((await leadNamed(LEAD_NAME)).lastInteractionAt.getTime()).toBeGreaterThan(
         before,
       );
+    });
+
+    it('registra a interação mesmo no movimento que não mexe no selo', async () => {
+      const before = (await leadNamed(LEAD_NAME)).lastInteractionAt.getTime();
+      await move('CONTACT_MADE');
+
+      // "A última interação do Lead é atualizada a cada movimento" vale para os
+      // quatro estágios; o status é que tem tabela própria.
+      expect((await leadNamed(LEAD_NAME)).lastInteractionAt.getTime()).toBeGreaterThan(
+        before,
+      );
+      expect((await leadNamed(LEAD_NAME)).status).toBe('NEW');
     });
 
     it('não mexe no status de quem não teve negócio movido', async () => {
@@ -754,7 +782,12 @@ describe('PATCH /deals/:id/stage', () => {
        * rota; a recusa existe para quem enviar por fora da tela.
        */
       expect(body.error).toBe('InvalidStageTransition');
-      expect(body.message).not.toBe('');
+      /*
+       * A frase é a **mesma** que o board mostra ao recusar o drop: ela vem da
+       * regra compartilhada, e não de um texto escrito de novo do lado da API.
+       * Duas explicações para a mesma recusa é o que este `toBe` impede.
+       */
+      expect(body.message).toBe(STAGE_MOVE_REFUSALS.InvalidStageTransition);
       expect(await stageOf(DEAL_TITLE)).toBe('NEW');
     });
 
@@ -764,6 +797,7 @@ describe('PATCH /deals/:id/stage', () => {
 
       // Negócio fechado é terminal: o histórico do que foi encerrado não muda.
       expect(body.error).toBe('DealAlreadyClosed');
+      expect(body.message).toBe(STAGE_MOVE_REFUSALS.DealAlreadyClosed);
       expect(columnOf(await board(), 'CLOSED').deals.at(0)?.stage).toBe('CLOSED');
     });
 

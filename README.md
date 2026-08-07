@@ -58,8 +58,11 @@ variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela
 
 ## Consulta sempre no servidor
 
-Busca, filtro, ordenação e paginação acontecem no banco, sem exceção — não existe `filter`,
-`sort` nem `slice` sobre os dados em tela nenhuma. As listagens respondem
+Busca, filtro, ordenação e paginação acontecem no banco, sem exceção. Existe **um** `filter`
+sobre dados em tela em todo o app, e ele não é consulta: é a previsão otimista do card
+arrastado, em `apps/web/src/lib/board.ts`, desfeita assim que o servidor responde (ver
+["Uma função decide o drop e a rejeição"](#uma-função-decide-o-drop-e-a-rejeição)). As listagens
+respondem
 `{ data, page, pageSize, total }`, e é o `total` que alimenta o contador: ele descreve o recorte
 inteiro, não as linhas que couberam na página.
 

@@ -37,9 +37,13 @@ import { CreateDealModal } from './CreateDealModal';
  * O board é também o dono do arrasto. Três coisas moram aqui porque nenhuma
  * coluna sozinha as saberia: **qual card está no ar** (a coluna de destino
  * precisa saber de onde ele veio para consultar a regra), **como mover** (é uma
- * mutação só, para qualquer coluna) e **o motivo da última recusa**, que
- * aparece num aviso só, no topo, venha ele da regra no navegador ou do
- * servidor.
+ * mutação só, para qualquer coluna) e **o motivo do movimento que não
+ * aconteceu**, num aviso só.
+ *
+ * Esse aviso é para a recusa que **acontece** — a do servidor, depois que o
+ * card já pulou de coluna. A recusa que o navegador faz durante o arrasto não
+ * passa por aqui: ela é dita pela própria coluna que recusa, sobreposta, porque
+ * um aviso crescendo no topo da página deslocaria o board no meio do gesto.
  */
 
 const countLabel = (total: number): string => {
@@ -207,7 +211,6 @@ export const DealsBoardPage = () => {
               onMove={moveDeal}
               onDragStart={startDragging}
               onDragEnd={() => setDragging(undefined)}
-              onRefuse={setRefusal}
             />
           ))}
         </div>

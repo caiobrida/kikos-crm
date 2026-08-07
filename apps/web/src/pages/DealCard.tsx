@@ -23,7 +23,9 @@ import { Avatar } from '../ui/Avatar';
  *   custoso.
  *
  * O card ainda não é clicável: o painel lateral e o detalhamento chegam na
- * fatia que os desenha.
+ * fatia que os desenha. Quando chegarem, o card inteiro vira alvo de clique e o
+ * seletor passa a ser um alvo dentro do outro — o clique nele precisará parar
+ * de subir, ou a ação mudará de lugar para o painel.
  */
 export interface DealCardProps {
   readonly deal: DealListItem;

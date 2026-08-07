@@ -173,9 +173,15 @@ export const useCreateDeal = () => {
   });
 };
 
-/** O gesto: qual card, e para que coluna. */
-export interface DealStageMove {
-  /** O card inteiro, e não só o identificador: é ele que o destino desenha. */
+/**
+ * O gesto: qual card, e para que coluna.
+ *
+ * Não confundir com o `DealStageMove` do repositório da API, que é o que a
+ * escrita grava (`{ stage, at }`). Este é o pedido visto da tela, e carrega o
+ * **card inteiro** — não só o identificador —, porque é ele que a coluna de
+ * destino desenha antes de o servidor responder.
+ */
+export interface DealMove {
   readonly deal: DealListItem;
   readonly to: DealStage;
 }
@@ -209,7 +215,7 @@ export const useMoveDealStage = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ deal, to }: DealStageMove) =>
+    mutationFn: ({ deal, to }: DealMove) =>
       apiJson(DealListItem, `/deals/${deal.id}/stage`, {
         method: 'PATCH',
         // O mesmo Schema que a rota usa para ler o corpo, no caminho de volta.

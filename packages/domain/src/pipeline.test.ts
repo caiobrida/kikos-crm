@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@effect/vitest';
 import { DEAL_STAGES, OPEN_DEAL_STAGES } from './enums';
-import { STAGE_MOVE_REFUSALS, isOpenDealStage, refuseStageMove } from './pipeline';
+import { isOpenDealStage, refuseStageMove } from './pipeline';
 
 /*
  * As regras puras do Pipeline, testadas direto — sem Layer, sem Effect, sem
@@ -63,11 +63,14 @@ describe('refuseStageMove', () => {
     expect(refuseStageMove('CLOSED', 'CLOSED')).toBe('DealAlreadyClosed');
   });
 
-  it('tem uma frase pronta para cada recusa', () => {
-    // O motivo que a tela mostra e o motivo que a API devolve saem daqui, do
-    // mesmo lugar: as duas pontas não têm como explicar a recusa diferente.
-    for (const refusal of ['DealAlreadyClosed', 'InvalidStageTransition'] as const) {
-      expect(STAGE_MOVE_REFUSALS[refusal]).not.toBe('');
+  it('deixa passar o movimento para o estágio em que o negócio já está', () => {
+    /*
+     * Não é recusa: `PATCH` com o estágio atual é idempotente, e a tela nem
+     * chega a pedi-lo — soltar um card na coluna de onde ele saiu não é
+     * movimento. Recusar aqui inventaria um erro que a tabela do spec não tem.
+     */
+    for (const stage of OPEN_DEAL_STAGES) {
+      expect(refuseStageMove(stage, stage)).toBeUndefined();
     }
   });
 });
