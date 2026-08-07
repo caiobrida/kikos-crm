@@ -12,13 +12,13 @@ Leads.
 
 **Branch:** `feat/create-deal`
 
-- [ ] Criar um negócio o faz aparecer na coluna correta do board
-- [ ] O campo de Lead busca entre os contatos cadastrados pelo nome
-- [ ] O responsável vem pré-preenchido com o dono do Lead escolhido, e pode ser trocado
-- [ ] Criar um negócio move o status do Lead vinculado para "Contato" na lista de Leads
-- [ ] Criar com Lead ou responsável inexistente devolve 404
-- [ ] Escolher "Fechado" como estágio inicial é recusado com 422
-- [ ] Campo obrigatório em branco é apontado no campo, sem chamar a API
+- [x] Criar um negócio o faz aparecer na coluna correta do board
+- [x] O campo de Lead busca entre os contatos cadastrados pelo nome
+- [x] O responsável vem pré-preenchido com o dono do Lead escolhido, e pode ser trocado
+- [x] Criar um negócio move o status do Lead vinculado para "Contato" na lista de Leads
+- [x] Criar com Lead ou responsável inexistente devolve 404
+- [x] Escolher "Fechado" como estágio inicial é recusado com 422
+- [x] Campo obrigatório em branco é apontado no campo, sem chamar a API
 
 ## Decisões que valem lembrar
 

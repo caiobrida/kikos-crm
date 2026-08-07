@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest';
-import { formatBRL } from './money';
+import { formatBRL, parseBRL } from './money';
 
 /*
  * O valor viaja em centavos e chega à tela em reais. A conversão é só aqui, na
@@ -29,5 +29,55 @@ describe('formatBRL', () => {
 
   it('formata valores grandes sem notação científica nem arredondamento', () => {
     expect(formatBRL(92_000_000)).toBe(`R$${NBSP}920.000,00`);
+  });
+});
+
+/*
+ * O caminho de volta: o que o vendedor digita no campo "Valor estimado" vira o
+ * inteiro em centavos que trafega e que o Schema valida. As duas funções são
+ * uma dupla — o que `formatBRL` escreve, `parseBRL` precisa saber ler, porque é
+ * assim que o campo se comporta quando alguém edita um valor já formatado.
+ */
+describe('parseBRL', () => {
+  it('lê o que o vendedor digita com vírgula e separador de milhar', () => {
+    expect(parseBRL('12.500,00')).toBe(1_250_000);
+    expect(parseBRL('12500,00')).toBe(1_250_000);
+    expect(parseBRL('1.234.567,89')).toBe(123_456_789);
+  });
+
+  it('lê um valor redondo, sem centavos escritos', () => {
+    // "12500" é doze mil e quinhentos reais, não cento e vinte e cinco reais:
+    // quem digita pensa em reais, e o campo mostra reais.
+    expect(parseBRL('12500')).toBe(1_250_000);
+    expect(parseBRL('0')).toBe(0);
+  });
+
+  it('completa os centavos escritos pela metade', () => {
+    expect(parseBRL('12500,5')).toBe(1_250_050);
+  });
+
+  it('lê de volta o que a tela formatou', () => {
+    // O campo mostra o valor formatado; editar e reenviar não pode mudá-lo.
+    expect(parseBRL(formatBRL(1_234_567))).toBe(1_234_567);
+  });
+
+  it('ignora o símbolo da moeda e os espaços em volta', () => {
+    expect(parseBRL(' R$ 12.500,00 ')).toBe(1_250_000);
+  });
+
+  it('recusa o que não é valor nenhum', () => {
+    // `null` é como o campo diz "não dá para converter"; quem recusa com a
+    // frase da tela é o Schema, com o `NaN` que este `null` vira.
+    expect(parseBRL('')).toBeNull();
+    expect(parseBRL('doze mil')).toBeNull();
+    expect(parseBRL('-1')).toBeNull();
+    expect(parseBRL('12,345')).toBeNull();
+  });
+
+  it('recusa o ponto usado como decimal, que é ambíguo em português', () => {
+    // "1.250" é mil duzentos e cinquenta reais, não um real e vinte e cinco:
+    // aceitar as duas leituras seria decidir por quem digitou.
+    expect(parseBRL('1.250')).toBe(125_000);
+    expect(parseBRL('1.25')).toBeNull();
   });
 });

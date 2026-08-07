@@ -26,8 +26,17 @@ import { Schema } from 'effect';
  */
 const MAX_VALUE_IN_CENTS = 1_000_000_000;
 
-/** Um valor monetário como o domínio o guarda: centavos, inteiros, não negativos. */
-export const ValueInCents = Schema.Int.pipe(
+/**
+ * Um valor monetário como o domínio o guarda: centavos, inteiros, não negativos.
+ *
+ * As três recusas falam português porque este Schema é também o campo "Valor
+ * estimado" do cadastro de negócio, e a frase aparece embaixo dele. A primeira
+ * é a que mais aparece na tela: o campo de dinheiro entrega centavos inteiros
+ * ou `NaN`, e `NaN` é como ele diz "está em branco, ou tem texto que não é
+ * valor nenhum". O exemplo é escrito em reais porque é o que o vendedor digita.
+ */
+export const ValueInCents = Schema.Number.pipe(
+  Schema.int({ message: () => 'Informe um valor válido, como 12.500,00.' }),
   Schema.greaterThanOrEqualTo(0, {
     message: () => 'O valor não pode ser negativo.',
     identifier: 'ValueInCents',

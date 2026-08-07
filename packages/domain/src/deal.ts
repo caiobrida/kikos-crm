@@ -1,6 +1,8 @@
 import { Schema } from 'effect';
+import { Chosen } from './choice';
+import { OptionalDate } from './dates';
 import { DealStage } from './enums';
-import { DealId, UserId } from './ids';
+import { DealId, LeadId, UserId } from './ids';
 import { LeadSummary } from './lead';
 import { ValueInCents } from './money';
 import {
@@ -11,6 +13,7 @@ import {
   SearchTerm,
   SortOrder,
 } from './pagination';
+import { OptionalText, RequiredText } from './text';
 import { UserSummary } from './user';
 
 /**
@@ -164,3 +167,49 @@ export const DealListQuery = Schema.Struct({
 
 export type DealListQuery = typeof DealListQuery.Type;
 export type DealListQueryEncoded = typeof DealListQuery.Encoded;
+
+/*
+ * ---------------------------------------------------------------------------
+ * O cadastro
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O corpo de `POST /deals` — e, campo por campo, o formulário "Cadastrar Novo
+ * Negócio".
+ *
+ * Como no cadastro de Lead, o mesmo objeto valida o formulário no navegador,
+ * via `@hookform/resolvers/effect-ts`, e a requisição na rota: não existem duas
+ * regras que possam divergir.
+ *
+ * Duas escolhas merecem nota:
+ *
+ * - **`stage` aceita os cinco estágios, inclusive `CLOSED`.** Quem proíbe
+ *   nascer fechado é a regra pura do Pipeline (`isOpenDealStage`), e é ela que
+ *   responde 422 — "esse movimento não existe" —, em vez de 400, que diria
+ *   "esse campo está malformado". O formulário nem oferece a opção, mas a
+ *   recusa precisa existir para quem enviar por fora da tela.
+ * - **`valueInCents` é o inteiro em centavos**, aqui como em todo o resto do
+ *   CRM — inclusive no corpo da requisição. A conversão do que o vendedor
+ *   digita em reais acontece na tela, na mesma borda que formata o valor de
+ *   volta; o Schema recebe o campo de dinheiro já convertido.
+ *
+ * O que **não** está aqui é tão deliberado quanto o que está: `result`,
+ * `closedAt` e `lastInteractionAt` são decididos pelo domínio no momento da
+ * criação, e um campo que não existe no Schema não tem como ser escolhido pelo
+ * corpo da requisição.
+ */
+export const CreateDealInput = Schema.Struct({
+  title: RequiredText('Informe o nome do negócio.', 120),
+  valueInCents: ValueInCents,
+  /** O contato de quem é o negócio, escolhido buscando pelo nome. */
+  leadId: Chosen(LeadId, 'Escolha o Lead do negócio.'),
+  /** Pode ser diferente do dono do Lead: quem prospecta nem sempre é quem fecha. */
+  ownerId: Chosen(UserId, 'Escolha o vendedor responsável.'),
+  stage: DealStage,
+  expectedCloseDate: Schema.optional(OptionalDate),
+  description: Schema.optional(OptionalText(2000)),
+});
+
+export type CreateDealInput = typeof CreateDealInput.Type;
+export type CreateDealInputEncoded = typeof CreateDealInput.Encoded;

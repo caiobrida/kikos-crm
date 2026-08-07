@@ -1,12 +1,21 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
+  CreateDealInput,
   DealBoard,
+  DealListItem,
   DealPage,
-  type DealListItem,
   type DealStage,
 } from '@kikos/domain';
-import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { Schema } from 'effect';
 import { apiJson } from './api';
+import { leadsQueryKey } from './leads';
 import { toQueryString } from './queryString';
 
 /** O prefixo de toda consulta de Deal — é por ele que as escritas as invalidam. */
@@ -121,3 +130,34 @@ export const useColumnPages = (
       },
     }),
   });
+
+/**
+ * Cadastra um negócio.
+ *
+ * `Schema.encodeSync` é o caminho de volta do mesmo Schema que validou o
+ * formulário: o valor de domínio — texto aparado, centavos inteiros, data como
+ * `Date`, identificadores marcados — volta à forma que trafega no JSON. Nenhuma
+ * montagem de corpo à mão, e nenhuma chance de a requisição divergir do que a
+ * API espera.
+ *
+ * As duas invalidações são as duas telas que a criação mexe: o board ganha um
+ * card, e **a lista de Leads muda de status** — o contato vinculado passa a
+ * estar "Em contato". Esquecer a segunda deixaria as duas telas contando
+ * histórias diferentes até alguém recarregar a página.
+ */
+export const useCreateDeal = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateDealInput) =>
+      apiJson(DealListItem, '/deals', {
+        method: 'POST',
+        body: Schema.encodeSync(CreateDealInput)(input),
+      }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
+      ]),
+  });
+};

@@ -6,14 +6,15 @@ import {
   type DealStage,
   type LeadStatus,
 } from '@kikos/domain';
-import { Layer, Schema } from 'effect';
+import { Schema } from 'effect';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { hashPassword } from '../auth/password';
 import { ACCESS_COOKIE } from '../http/cookies';
-import { DealRepositoryInMemory, type DealRecord } from '../repositories/DealRepository';
-import { LeadRepositoryInMemory, type LeadRecord } from '../repositories/LeadRepository';
-import { UserRepositoryInMemory, type UserRecord } from '../repositories/UserRepository';
+import type { DealRecord } from '../repositories/DealRepository';
+import { InMemoryRepositories } from '../repositories/inMemory';
+import type { LeadRecord } from '../repositories/LeadRepository';
+import type { UserRecord } from '../repositories/UserRepository';
 import { makeRuntime } from '../runtime';
 import { buildServer } from '../server';
 
@@ -372,6 +373,11 @@ export interface TestHarness {
   readonly manager: UserRecord;
   readonly seller: UserRecord;
   /**
+   * A carteira como ela nasceu, para quando o teste precisa de um contato que
+   * a API não devolve — o removido, que só existe do lado de cá da seam.
+   */
+  readonly leads: readonly LeadRecord[];
+  /**
    * Um GET já autenticado como o gestor — o caminho normal de toda tela do CRM.
    * A sessão é aberta uma vez na montagem, para não pagar um bcrypt por teste.
    */
@@ -411,19 +417,9 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
   const leads = makeLeads(manager, seller);
   const deals = makeDeals(leads, manager, seller);
 
-  /*
-   * `Layer.mergeAll` compõe os repositórios do mesmo jeito que a produção
-   * compõe os de Prisma. As Layers de Lead e de Deal recebem os Users porque as
-   * listagens devolvem o responsável resolvido — é o `JOIN` do SQL, feito à
-   * mão. A de Deal recebe também os Leads, pelo mesmo motivo.
-   */
-  const runtime = makeRuntime(
-    Layer.mergeAll(
-      UserRepositoryInMemory(users),
-      LeadRepositoryInMemory(leads, users),
-      DealRepositoryInMemory(deals, leads, users),
-    ),
-  );
+  // Os três repositórios sobre um estado só, como as três tabelas do mesmo
+  // Postgres — o que permite criar um Lead e vincular um Deal a ele em seguida.
+  const runtime = makeRuntime(InMemoryRepositories({ users, leads, deals }));
 
   const app = buildServer({ runtime, logger: false });
   await app.ready();
@@ -441,6 +437,7 @@ export const makeTestHarness = async (): Promise<TestHarness> => {
     app,
     manager,
     seller,
+    leads,
     get: (url) => app.inject({ method: 'GET', url, cookies }),
     post: (url, payload) => app.inject({ method: 'POST', url, cookies, payload }),
     close: async () => {

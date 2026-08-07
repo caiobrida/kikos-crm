@@ -3,11 +3,18 @@ import { cn } from '../lib/cn';
 
 const CONTROL =
   'w-full rounded-lg bg-surface-800 px-3 text-sm text-ink placeholder:text-ink-faint ' +
-  'ring-1 ring-surface-600 ring-inset transition-colors ' +
-  'hover:ring-surface-500 focus:ring-2 focus:ring-brand-500 ' +
+  'ring-1 ring-inset transition-colors focus:ring-2 ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
 
-const CONTROL_INVALID = 'ring-lost-500 hover:ring-lost-500 focus:ring-lost-500';
+/*
+ * A cor do anel é escolhida por estado, e nunca sobreposta: `cn` só concatena,
+ * então duas classes da mesma propriedade deixariam a ordem da folha de estilo
+ * decidir quem vence — e o campo em erro só ficaria vermelho enquanto tivesse o
+ * foco, que é justamente quando ele menos precisa se anunciar.
+ */
+const CONTROL_RING = 'ring-surface-600 hover:ring-surface-500 focus:ring-brand-500';
+
+const CONTROL_INVALID = 'ring-lost-500 hover:ring-lost-400 focus:ring-lost-500';
 
 /*
  * O `Field` não pode mexer nos filhos que recebe, mas precisa ligar o controle
@@ -116,7 +123,12 @@ export const Input = ({ invalid, className, ...rest }: InputProps) => {
 
   return (
     <input
-      className={cn(CONTROL, 'h-10', aria.invalid && CONTROL_INVALID, className)}
+      className={cn(
+        CONTROL,
+        'h-10',
+        aria.invalid ? CONTROL_INVALID : CONTROL_RING,
+        className,
+      )}
       aria-invalid={aria.invalid}
       aria-describedby={aria.describedBy}
       {...rest}
@@ -133,7 +145,12 @@ export const Textarea = ({ invalid, className, ...rest }: TextareaProps) => {
 
   return (
     <textarea
-      className={cn(CONTROL, 'min-h-24 py-2', aria.invalid && CONTROL_INVALID, className)}
+      className={cn(
+        CONTROL,
+        'min-h-24 py-2',
+        aria.invalid ? CONTROL_INVALID : CONTROL_RING,
+        className,
+      )}
       aria-invalid={aria.invalid}
       aria-describedby={aria.describedBy}
       {...rest}
@@ -150,7 +167,12 @@ export const Select = ({ invalid, className, children, ...rest }: SelectProps) =
 
   return (
     <select
-      className={cn(CONTROL, 'h-10', aria.invalid && CONTROL_INVALID, className)}
+      className={cn(
+        CONTROL,
+        'h-10',
+        aria.invalid ? CONTROL_INVALID : CONTROL_RING,
+        className,
+      )}
       aria-invalid={aria.invalid}
       aria-describedby={aria.describedBy}
       {...rest}

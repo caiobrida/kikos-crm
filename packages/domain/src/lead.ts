@@ -1,4 +1,5 @@
 import { Schema } from 'effect';
+import { Chosen } from './choice';
 import { LeadSource, LeadStatus } from './enums';
 import { LeadId, UserId } from './ids';
 import {
@@ -121,35 +122,6 @@ export type LeadListQueryEncoded = typeof LeadListQuery.Encoded;
  * ---------------------------------------------------------------------------
  */
 
-const isLeadSource = Schema.is(LeadSource);
-const isUserId = Schema.is(UserId);
-
-/*
- * Os dois `<select>` do formulário, como o navegador de fato os manda.
- *
- * Um `<select>` sem escolha manda `""` — não a ausência do campo. Se o Schema
- * pedisse `LeadSource` direto, o lado *codificado* seria a união fechada, e o
- * formulário não teria como nascer em branco sem mentir para o compilador.
- *
- * `Schema.filter` com um type guard resolve os dois lados de uma vez: o lado
- * codificado continua `string`, o decodificado é o tipo estreito, e a recusa
- * carrega a frase que vai aparecer embaixo do campo. O guard é o `Schema.is` do
- * próprio Schema de origem — a regra continua escrita num lugar só.
- */
-const ChosenLeadSource = Schema.String.pipe(
-  Schema.filter((value): value is LeadSource => isLeadSource(value), {
-    message: () => 'Escolha a origem do Lead.',
-    identifier: 'ChosenLeadSource',
-  }),
-);
-
-const ChosenOwnerId = Schema.String.pipe(
-  Schema.filter((value): value is UserId => isUserId(value), {
-    message: () => 'Escolha o vendedor responsável.',
-    identifier: 'ChosenOwnerId',
-  }),
-);
-
 /**
  * O corpo de `POST /leads` — e, campo por campo, o formulário "Criar Novo Lead".
  *
@@ -178,10 +150,26 @@ export const CreateLeadInput = Schema.Struct({
   email: Email,
   phone: RequiredText('Informe o telefone.', 40),
   jobTitle: Schema.optional(OptionalText(120)),
-  source: ChosenLeadSource,
-  ownerId: ChosenOwnerId,
+  /* Os dois `<select>` do formulário, como o navegador de fato os manda: `""`
+     enquanto ninguém escolheu, o valor do vocabulário depois. Ver `Chosen`. */
+  source: Chosen(LeadSource, 'Escolha a origem do Lead.'),
+  ownerId: Chosen(UserId, 'Escolha o vendedor responsável.'),
   notes: Schema.optional(OptionalText(2000)),
 });
 
 export type CreateLeadInput = typeof CreateLeadInput.Type;
 export type CreateLeadInputEncoded = typeof CreateLeadInput.Encoded;
+
+/**
+ * O status que o Lead assume quando um Deal nasce para ele.
+ *
+ * O `status` do Lead é coluna própria, sincronizada pelo domínio a cada ação de
+ * Deal com a regra **"último evento vence"**: quem tem negócio aberto está "Em
+ * contato", e as transições seguintes — negociação, ganho e perdido — chegam
+ * com as fatias que movem e encerram o negócio.
+ *
+ * Derivar o status na leitura exigiria regra de precedência entre os vários
+ * Deals do mesmo Lead e agregação em toda listagem; deixá-lo manual faria a
+ * lista de Leads divergir visivelmente do board.
+ */
+export const LEAD_STATUS_AFTER_DEAL_CREATED: LeadStatus = 'CONTACT';

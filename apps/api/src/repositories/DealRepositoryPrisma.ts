@@ -138,6 +138,15 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
     );
 
     return {
+      create: (deal) =>
+        Effect.promise(async () => {
+          // O mesmo `select` da listagem: a linha volta pronta para o card, com
+          // o Lead e o responsável trazidos pelo `JOIN` da própria inserção.
+          const row = await prisma.deal.create({ data: deal, select: LIST_SELECT });
+
+          return toDealWithRelations(row);
+        }),
+
       list: (query) =>
         Effect.promise(async () => {
           /*
