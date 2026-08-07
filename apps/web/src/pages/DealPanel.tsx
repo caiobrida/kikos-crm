@@ -3,7 +3,7 @@ import { formatLastInteraction } from '../lib/dates';
 import { useDeal } from '../lib/deals';
 import { formatBRL } from '../lib/money';
 import { Avatar } from '../ui/Avatar';
-import { DealStageBadge } from '../ui/Badge';
+import { DealResultBadge, DealStageBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Definition } from '../ui/Definition';
 
@@ -97,7 +97,19 @@ export const DealPanel = ({ dealId, onClose, onOpenDetail }: DealPanelProps) => 
             </Definition>
 
             <Definition label="Estágio">
-              <DealStageBadge stage={deal.data.stage} />
+              <div className="flex flex-wrap items-center gap-2">
+                <DealStageBadge stage={deal.data.stage} />
+                {/*
+                  O desfecho ao lado do estágio, como no detalhamento e pelo
+                  mesmo motivo: só quando existe. Sem ele, um negócio ganho e um
+                  perdido apareceriam idênticos no painel — os dois dizendo
+                  apenas "Fechado" —, e o resumo contradiria o card colorido de
+                  onde a pessoa acabou de clicar.
+                */}
+                {deal.data.result === 'OPEN' ? null : (
+                  <DealResultBadge result={deal.data.result} />
+                )}
+              </div>
             </Definition>
 
             <Definition label="Lead">

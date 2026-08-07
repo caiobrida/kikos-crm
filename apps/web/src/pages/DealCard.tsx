@@ -1,9 +1,15 @@
-import { OPEN_DEAL_STAGES, type DealListItem, type DealStage } from '@kikos/domain';
+import {
+  OPEN_DEAL_STAGES,
+  type DealListItem,
+  type DealResult,
+  type DealStage,
+} from '@kikos/domain';
 import type { DragEvent } from 'react';
 import { cn } from '../lib/cn';
 import { DEAL_STAGE_LABELS } from '../lib/labels';
 import { formatBRL } from '../lib/money';
 import { Avatar } from '../ui/Avatar';
+import { DealResultBadge } from '../ui/Badge';
 
 /**
  * Um negócio, como o card do board o mostra.
@@ -12,6 +18,12 @@ import { Avatar } from '../ui/Avatar';
  * responde por ele. É o que permite reconhecer a oportunidade sem abrir nada —
  * e é exatamente o que o Schema `DealListItem` carrega, para que a coluna não
  * precise buscar mais nada por card.
+ *
+ * **Na coluna Fechado ele é verde ou vermelho**, e é o que responde "ganhamos ou
+ * perdemos?" sem abrir nada — a pergunta que o gestor faz de relance ao olhar o
+ * que já terminou. A cor vem do `result` que o card carrega; nas outras quatro
+ * colunas o desfecho é sempre "em aberto", e por isso não pinta nada: uma cor
+ * que estivesse em todo card não distinguiria coisa alguma.
  *
  * O card se move por dois caminhos, e os dois chamam a mesma coisa:
  *
@@ -32,8 +44,13 @@ import { Avatar } from '../ui/Avatar';
  */
 export interface DealCardProps {
   readonly deal: DealListItem;
-  /** Leva o negócio para outra coluna — a mesma ação do arrasto e do seletor. */
-  readonly onMove: (deal: DealListItem, to: DealStage) => void;
+  /**
+   * O vendedor escolheu um estágio para este negócio, pelo seletor. É a mesma
+   * função que a coluna chama no drop — ver `BoardColumn`, que explica por que
+   * ela não se chama `onMove`. Daqui ela é sempre um movimento: o seletor só
+   * oferece os quatro estágios abertos.
+   */
+  readonly onStageChosen: (deal: DealListItem, to: DealStage) => void;
   /** Abre o resumo do negócio no painel lateral, sem sair do board. */
   readonly onOpen: (deal: DealListItem) => void;
   readonly onDragStart: (deal: DealListItem) => void;
@@ -42,9 +59,23 @@ export interface DealCardProps {
   readonly isDragging: boolean;
 }
 
+/**
+ * A borda que anuncia o desfecho na coluna Fechado.
+ *
+ * `Record<DealResult, …>` pelo mesmo motivo dos selos: um desfecho novo no
+ * vocabulário quebra o typecheck aqui, em vez de virar um card sem cor. `OPEN`
+ * não pinta nada — é o estado de quase todo card do funil, e uma cor que
+ * aparecesse em todos não distinguiria nada.
+ */
+const RESULT_RINGS: Record<DealResult, string> = {
+  OPEN: 'ring-surface-700 hover:ring-surface-500',
+  WON: 'ring-won-500/50 hover:ring-won-500',
+  LOST: 'ring-lost-500/50 hover:ring-lost-500',
+};
+
 export const DealCard = ({
   deal,
-  onMove,
+  onStageChosen,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -75,8 +106,8 @@ export const DealCard = ({
       onDragEnd={onDragEnd}
       onClick={() => onOpen(deal)}
       className={cn(
-        'rounded-card bg-surface-800 p-3 ring-1 ring-surface-700 transition-colors',
-        'hover:ring-surface-500',
+        'rounded-card bg-surface-800 p-3 ring-1 transition-colors',
+        RESULT_RINGS[deal.result],
         // O cursor é a única pista de que o card se arrasta antes de alguém
         // tentar; na coluna Fechado ele não aparece, porque lá não se arrasta.
         isClosed ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
@@ -114,7 +145,17 @@ export const DealCard = ({
         <Avatar name={deal.owner.name} size="sm" />
       </div>
 
-      {isClosed ? null : (
+      {isClosed ? (
+        /*
+          No lugar do seletor, o desfecho — porque negócio encerrado não se move,
+          e porque a cor da borda sozinha não serve: quem não distingue verde de
+          vermelho continuaria vendo dois cards iguais na coluna Fechado. O selo
+          diz a mesma coisa por escrito, e é o que o leitor de tela encontra.
+        */
+        <div className="mt-3">
+          <DealResultBadge result={deal.result} />
+        </div>
+      ) : (
         /*
           O clique no seletor para aqui: ele é um alvo dentro do card, e escolher
           um estágio é mover, não abrir. Sem isto, cada movimentação pelo teclado
@@ -141,7 +182,7 @@ export const DealCard = ({
               const chosen = OPEN_DEAL_STAGES.find(
                 (stage) => stage === event.target.value,
               );
-              if (chosen !== undefined) onMove(deal, chosen);
+              if (chosen !== undefined) onStageChosen(deal, chosen);
             }}
             className={
               'w-full rounded-md bg-surface-700 px-2 py-1 text-xs text-ink-muted ' +

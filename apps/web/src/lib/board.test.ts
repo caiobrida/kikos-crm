@@ -35,6 +35,12 @@ const card = (n: number, stage: DealStage): DealListItem => ({
   title: `Esteiras da unidade ${n}`,
   valueInCents: 1_250_000,
   stage,
+  /*
+   * Em aberto sempre: estas funções preveem o board **depois de um arrasto**, e
+   * arrastar é o gesto que só existe entre estágios abertos. Encerrar não passa
+   * por aqui — não tem escrita otimista, porque reabrir negócio não existe.
+   */
+  result: 'OPEN',
   lead: { id: LEAD_ID, name: 'Ana Beatriz Souza', company: 'Studio Corpo Livre' },
   owner: { id: OWNER_ID, name: 'Ana Paula Nogueira' },
 });

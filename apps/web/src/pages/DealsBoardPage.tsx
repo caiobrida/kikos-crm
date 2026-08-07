@@ -1,6 +1,6 @@
 import {
   STAGE_MOVE_REFUSALS,
-  refuseStageMove,
+  stageDrop,
   type DealListItem,
   type DealStage,
 } from '@kikos/domain';
@@ -21,6 +21,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Field';
 import { OwnerFilter } from '../ui/OwnerFilter';
 import { BoardColumn } from './BoardColumn';
+import { CloseDealModal } from './CloseDealModal';
 import { CreateDealModal } from './CreateDealModal';
 import { DealDetailModal } from './DealDetailModal';
 import { DealPanel, PANEL_CLEARANCE } from './DealPanel';
@@ -38,11 +39,13 @@ import { DealPanel, PANEL_CLEARANCE } from './DealPanel';
  * coluna que carrega mais, sozinha, quando tem mais negócios do que coube na
  * primeira leva.
  *
- * O board é também o dono do arrasto. Três coisas moram aqui porque nenhuma
+ * O board é também o dono do arrasto. Quatro coisas moram aqui porque nenhuma
  * coluna sozinha as saberia: **qual card está no ar** (a coluna de destino
  * precisa saber de onde ele veio para consultar a regra), **como mover** (é uma
- * mutação só, para qualquer coluna) e **o motivo do movimento que não
- * aconteceu**, num aviso só.
+ * mutação só, para qualquer coluna), **qual negócio espera a escolha de
+ * desfecho** — porque soltar na coluna Fechado não move nada, abre a decisão
+ * entre Ganho e Perdido (ADR-0003) — e **o motivo do que não aconteceu**, num
+ * aviso só.
  *
  * Esse aviso é para a recusa que **acontece** — a do servidor, depois que o
  * card já pulou de coluna. A recusa que o navegador faz durante o arrasto não
@@ -88,6 +91,16 @@ export const DealsBoardPage = () => {
   /** Por que o último movimento não aconteceu. Some assim que outro começa. */
   const [refusal, setRefusal] = useState<string>();
 
+  /**
+   * O negócio que foi solto na coluna Fechado e espera a escolha do desfecho.
+   *
+   * É o **card inteiro**, e não o identificador: o diálogo mostra o negócio
+   * sobre o qual se está decidindo, e o board já tem esses dados na mão —
+   * pedi-los de novo ao servidor para desenhar um cabeçalho seria uma ida a
+   * mais no meio de um gesto que acabou de acontecer.
+   */
+  const [closing, setClosing] = useState<DealListItem>();
+
   /** O negócio aberto no painel lateral, se houver algum. */
   const [summarized, setSummarized] = useState<string>();
 
@@ -111,29 +124,44 @@ export const DealsBoardPage = () => {
   const move = useMoveDealStage();
 
   /**
-   * O movimento, venha ele do arrasto ou do seletor do card.
+   * O que fazer com o estágio que o vendedor escolheu — arrastando o card ou
+   * pelo seletor dele.
    *
-   * A regra do funil é consultada **aqui também**, e não só na coluna que
-   * aceita o drop: é a mesma função, e é ela que garante que nenhum caminho da
-   * tela chegue a montar uma requisição que o servidor recusaria. Quando ela
-   * recusa, a API não é chamada — o motivo aparece e o card não sai do lugar.
+   * A regra é consultada **aqui também**, e não só na coluna que aceita o drop:
+   * é a mesma função, e é ela que garante que nenhum caminho da tela chegue a
+   * montar uma requisição que o servidor recusaria. O que mudou nesta fatia é
+   * que a resposta tem três formas em vez de duas, e é o `switch` sobre elas
+   * que traduz cada uma na ação certa — com o compilador cobrando que nenhuma
+   * fique sem tratamento.
    */
-  const moveDeal = (deal: DealListItem, to: DealStage) => {
+  const chooseStage = (deal: DealListItem, to: DealStage) => {
     setDragging(undefined);
+    const drop = stageDrop(deal.stage, to);
 
-    const refused = refuseStageMove(deal.stage, to);
-    if (refused !== undefined) {
-      setRefusal(STAGE_MOVE_REFUSALS[refused]);
-      return;
+    switch (drop.kind) {
+      case 'refused':
+        // A API não é chamada: o motivo aparece e o card não sai do lugar.
+        setRefusal(STAGE_MOVE_REFUSALS[drop.reason]);
+        return;
+
+      case 'close':
+        /*
+         * Soltar em Fechado não move nada — abre a escolha entre Ganho e
+         * Perdido (ADR-0003). O card fica onde está até que alguém a faça.
+         */
+        setRefusal(undefined);
+        setClosing(deal);
+        return;
+
+      case 'move':
+        setRefusal(undefined);
+        move.mutate(
+          { deal, to: drop.to },
+          // A volta do card é da mutação, que desfaz o cache; o que sobra para
+          // a tela é dizer por quê.
+          { onError: (error) => setRefusal(moveFailure(error)) },
+        );
     }
-
-    setRefusal(undefined);
-    move.mutate(
-      { deal, to },
-      // A volta do card é da mutação, que desfaz o cache; o que sobra para a
-      // tela é dizer por quê.
-      { onError: (error) => setRefusal(moveFailure(error)) },
-    );
   };
 
   const startDragging = (deal: DealListItem) => {
@@ -174,6 +202,27 @@ export const DealsBoardPage = () => {
       </header>
 
       {isCreating ? <CreateDealModal onClose={() => setIsCreating(false)} /> : null}
+
+      {/*
+        A escolha do desfecho, montada só quando há negócio esperando por ela —
+        como os outros modais desta tela. A recusa do servidor sobe para o aviso
+        do board: é o mesmo lugar onde a recusa de um movimento aparece, e é o
+        único que sobrevive ao diálogo fechar.
+      */}
+      {closing === undefined ? null : (
+        <CloseDealModal
+          deal={closing}
+          onClose={() => setClosing(undefined)}
+          onClosed={() => {
+            setClosing(undefined);
+            setRefusal(undefined);
+          }}
+          onRefused={(message) => {
+            setClosing(undefined);
+            setRefusal(message);
+          }}
+        />
+      )}
 
       {summarized === undefined ? null : (
         <DealPanel
@@ -266,7 +315,7 @@ export const DealsBoardPage = () => {
               column={column}
               view={query}
               dragging={dragging}
-              onMove={moveDeal}
+              onStageChosen={chooseStage}
               onOpen={(deal) => setSummarized(deal.id)}
               onDragStart={startDragging}
               onDragEnd={() => setDragging(undefined)}

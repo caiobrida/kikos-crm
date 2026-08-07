@@ -1,4 +1,4 @@
-import { OPEN_DEAL_STAGES, type DealStage } from './enums';
+import { OPEN_DEAL_STAGES, type DealResult, type DealStage } from './enums';
 
 /*
  * As regras do Pipeline — puras, sem Schema, sem Effect, sem I/O.
@@ -8,6 +8,11 @@ import { OPEN_DEAL_STAGES, type DealStage } from './enums';
  * recusa quem enviar outra coisa por fora da tela com `isOpenDealStage` — que é
  * derivado da mesma lista. Uma regra só, escrita num lugar só; é o que impede o
  * formulário e a rota de discordarem sobre o que é um funil válido.
+ *
+ * O arquivo é dono das **duas** dimensões de ADR-0003, e não só do estágio: o
+ * resultado é o que faz um negócio sair do funil, e as regras que decidem
+ * movimento e encerramento leem uma à outra. Separá-las em dois módulos seria
+ * separar as duas metades de uma decisão só.
  */
 
 /**
@@ -110,6 +115,107 @@ export const STAGE_MOVE_REFUSALS: Record<StageMoveRefusal, string> = {
     'ganho ou perdido.',
 };
 
+/*
+ * ---------------------------------------------------------------------------
+ * O encerramento
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Por que o CRM recusa encerrar um negócio.
+ *
+ * Uma recusa só, e o nome **é a tag do erro de domínio** correspondente, como em
+ * `StageMoveRefusal`. A união de um membro não é cerimônia: é o que faz uma
+ * recusa nova nascida aqui quebrar o `switch` que a traduz em HTTP, em vez de
+ * escapar como 500.
+ */
+export type DealCloseRefusal = 'DealAlreadyClosed';
+
+/**
+ * O CRM aceita encerrar um negócio que está neste estágio? Devolve o motivo da
+ * recusa, ou `undefined` quando o encerramento vale.
+ *
+ * A irmã de `refuseStageMove`, e curta pelo mesmo motivo que aquela é: **o
+ * estágio de origem basta**. O estado "estágio Fechado com resultado em aberto"
+ * é inalcançável por construção (ADR-0003), então quem está em `CLOSED` já tem
+ * desfecho registrado — e negócio encerrado é terminal: mover, editar e encerrar
+ * de novo falham, e reabrir não existe.
+ *
+ * O desfecho pedido não entra na regra de propósito. Encerrar como Ganho um
+ * negócio já perdido não é "trocar o resultado", é a mesma escrita recusada pelo
+ * mesmo motivo — e é por isso que a recusa não tem uma segunda variante.
+ */
+export const refuseDealClose = (from: DealStage): DealCloseRefusal | undefined =>
+  from === 'CLOSED' ? 'DealAlreadyClosed' : undefined;
+
+/**
+ * O motivo da recusa em português, pronto para a tela — como em
+ * `STAGE_MOVE_REFUSALS`, e pelo mesmo motivo: a frase que o navegador mostra ao
+ * recusar o clique e a que a API devolve no corpo do 409 são a mesma.
+ *
+ * Ela é distinta da recusa de movimento apesar de a tag ser a mesma, porque o
+ * que a pessoa acabou de tentar é outro: lá ela arrastou um card e quer saber
+ * por que ele voltou; aqui ela clicou em "Ganho" e quer saber por que o desfecho
+ * não mudou.
+ */
+export const DEAL_CLOSE_REFUSALS: Record<DealCloseRefusal, string> = {
+  DealAlreadyClosed:
+    'Este negócio já foi encerrado, e o desfecho registrado não muda. ' +
+    'Reabrir negócio não existe.',
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * O gesto
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O que soltar um card numa coluna faz.
+ *
+ * Existe porque desde a fatia que encerra negócios o board tem **três** respostas
+ * possíveis para o mesmo gesto, e não duas: mover, abrir a escolha entre Ganho e
+ * Perdido, ou recusar. `refuseStageMove` responde a outra pergunta — "esta
+ * escrita vale?" —, e é a que a rota faz antes de gravar; esta responde "o que
+ * este arrasto faz?", que é a que a coluna faz antes de aceitar o drop.
+ *
+ * As duas moram juntas e uma deriva da outra de propósito. A regra do funil não
+ * mudou nesta fatia — `PATCH` de estágio para `CLOSED` continua sendo 422
+ * (ADR-0003) —; o que mudou foi o que a tela faz com essa recusa, e este é o
+ * lugar onde essa leitura fica escrita uma vez só, pura e testável, em vez de
+ * virar um `if` sobre a tag do erro dentro de um componente.
+ *
+ * O `to` de `'move'` já vem estreitado para `OpenDealStage`: quem consome não
+ * precisa reconferir o que a regra acabou de decidir.
+ */
+export type StageDrop =
+  | { readonly kind: 'move'; readonly to: OpenDealStage }
+  | { readonly kind: 'close' }
+  | { readonly kind: 'refused'; readonly reason: StageMoveRefusal };
+
+export const stageDrop = (from: DealStage, to: DealStage): StageDrop => {
+  const refusal = refuseStageMove(from, to);
+
+  // Negócio encerrado não se move **e** não se encerra de novo: a recusa vem
+  // antes de qualquer leitura do destino, como na regra de movimento.
+  if (refusal === 'DealAlreadyClosed') return { kind: 'refused', reason: refusal };
+
+  /*
+   * A recusa que sobra é sempre `InvalidStageTransition`, e sempre pelo mesmo
+   * motivo: o destino é Fechado. É exatamente o gesto que abre a escolha —
+   * "soltar um card na coluna Fechado abre a escolha entre Ganho e Perdido".
+   */
+  if (!isOpenDealStage(to)) return { kind: 'close' };
+
+  return { kind: 'move', to };
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * Os rótulos
+ * ---------------------------------------------------------------------------
+ */
+
 /**
  * O nome de cada estágio em português.
  *
@@ -130,4 +236,23 @@ export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
   PROPOSAL_SENT: 'Proposta enviada',
   NEGOTIATION: 'Negociação',
   CLOSED: 'Fechado',
+};
+
+/**
+ * O nome de cada desfecho em português.
+ *
+ * Desceu do app web para cá pelo mesmo motivo e na mesma fatia em que o
+ * encerramento nasceu: o registro de sistema que ele deixa na linha do tempo
+ * grava a frase pronta no banco — "Negócio encerrado como Ganho." —, e quem a
+ * escreve é o servidor. Duplicar o mapa deixaria o botão do detalhamento e o
+ * histórico do negócio chamando o mesmo desfecho por dois nomes.
+ *
+ * `OPEN` continua aqui, mesmo não sendo escolha de encerramento: ele é um selo
+ * que a tela desenha, e o `Record<DealResult, string>` é a trava de sempre —
+ * um desfecho novo no vocabulário sem rótulo aqui quebra o typecheck.
+ */
+export const DEAL_RESULT_LABELS: Record<DealResult, string> = {
+  OPEN: 'Em aberto',
+  WON: 'Ganho',
+  LOST: 'Perdido',
 };

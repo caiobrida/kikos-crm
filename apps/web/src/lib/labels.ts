@@ -1,10 +1,4 @@
-import type {
-  CommentKind,
-  DealResult,
-  LeadSource,
-  LeadStatus,
-  UserRole,
-} from '@kikos/domain';
+import type { CommentKind, LeadSource, LeadStatus, UserRole } from '@kikos/domain';
 
 /*
  * O mapa único de rótulos: código e banco em inglês, interface em português.
@@ -16,19 +10,14 @@ import type {
  */
 
 /*
- * Os nomes dos estágios são a exceção: eles moram no pacote compartilhado, e não
- * aqui. Deixaram de ser só interface quando o registro de sistema da linha do
- * tempo passou a gravar a frase pronta no banco — é o servidor quem a escreve.
- * O re-export mantém o import de todo mundo apontando para este arquivo, que
- * continua sendo o lugar onde se procura um rótulo.
+ * Os nomes dos estágios e dos desfechos são a exceção: eles moram no pacote
+ * compartilhado, e não aqui. Deixaram de ser só interface quando os registros
+ * de sistema da linha do tempo passaram a gravar a frase pronta no banco — a
+ * mudança de estágio primeiro, o encerramento depois —, e é o servidor quem a
+ * escreve. O re-export mantém o import de todo mundo apontando para este
+ * arquivo, que continua sendo o lugar onde se procura um rótulo.
  */
-export { DEAL_STAGE_LABELS } from '@kikos/domain';
-
-export const DEAL_RESULT_LABELS: Record<DealResult, string> = {
-  OPEN: 'Em aberto',
-  WON: 'Ganho',
-  LOST: 'Perdido',
-};
+export { DEAL_RESULT_LABELS, DEAL_STAGE_LABELS } from '@kikos/domain';
 
 /*
  * O que cada espécie de registro da linha do tempo é.

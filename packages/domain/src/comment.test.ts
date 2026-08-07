@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest';
-import { stageMoveRecord } from './comment';
-import { DEAL_STAGES } from './enums';
-import { DEAL_STAGE_LABELS } from './pipeline';
+import { dealCloseRecord, stageMoveRecord } from './comment';
+import { CLOSED_DEAL_RESULTS, DEAL_STAGES } from './enums';
+import { DEAL_RESULT_LABELS, DEAL_STAGE_LABELS } from './pipeline';
 
 /*
  * O texto do registro de sistema, testado direto — sem Layer, sem servidor.
@@ -29,6 +29,25 @@ describe('stageMoveRecord', () => {
         // rótulo em português tem sublinhado.
         expect(record).not.toContain('_');
       }
+    }
+  });
+});
+
+/*
+ * O registro que o encerramento deixa. Ele responde a pergunta que o gestor faz
+ * ao reconstituir a negociação — como ela terminou —, e por isso nomeia o
+ * desfecho em vez de dizer só "negócio encerrado".
+ */
+describe('dealCloseRecord', () => {
+  it('nomeia o desfecho com a palavra do botão que encerrou', () => {
+    expect(dealCloseRecord('WON')).toBe('Negócio encerrado como Ganho.');
+    expect(dealCloseRecord('LOST')).toBe('Negócio encerrado como Perdido.');
+  });
+
+  it('não deixa vazar o valor cru do enum para o histórico', () => {
+    for (const result of CLOSED_DEAL_RESULTS) {
+      expect(dealCloseRecord(result)).toContain(DEAL_RESULT_LABELS[result]);
+      expect(dealCloseRecord(result)).not.toContain(result);
     }
   });
 });

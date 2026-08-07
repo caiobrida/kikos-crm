@@ -1,5 +1,6 @@
 import {
   Comment,
+  dealCloseRecord,
   type DealDetail,
   type DealListItem,
   type DealTimeline,
@@ -389,7 +390,7 @@ describe('o registro de sistema da movimentação', () => {
     expect(newest?.createdAt.getTime()).toBe(detail.lastInteractionAt.getTime());
   });
 
-  it('deixa um registro por movimento, na ordem em que aconteceram', async () => {
+  it('deixa um registro por movimento, cada um nomeando o seu', async () => {
     const before = await timelineOf(deal.id);
 
     await move('CONTACT_MADE');
@@ -397,8 +398,23 @@ describe('o registro de sistema da movimentação', () => {
 
     const timeline = await timelineOf(deal.id);
     expect(timeline).toHaveLength(before.length + 2);
-    expect(timeline.at(0)?.body).toBe(stageMoveRecord('CONTACT_MADE', 'NEGOTIATION'));
-    expect(timeline.at(1)?.body).toBe(stageMoveRecord('NEW', 'CONTACT_MADE'));
+
+    /*
+     * Os dois registros **como conjunto**, e não um por posição. Dois
+     * movimentos seguidos num teste caem no mesmo milissegundo, e nesse empate
+     * a linha do tempo desempata pelo identificador — uma ordem estável, que é
+     * o que o produto promete, mas não cronológica (ver `newestFirst` no
+     * repositório de comentário). Afirmar a posição faz este teste falhar de
+     * vez em quando por uma garantia que nunca existiu; que a ordem é do mais
+     * recente para o mais antigo já é afirmado sobre `createdAt`, na leitura.
+     */
+    const newest = timeline.slice(0, 2).map((entry) => entry.body);
+    expect([...newest].sort()).toEqual(
+      [
+        stageMoveRecord('NEW', 'CONTACT_MADE'),
+        stageMoveRecord('CONTACT_MADE', 'NEGOTIATION'),
+      ].sort(),
+    );
   });
 
   it('não registra nada quando o negócio já está no estágio pedido', async () => {
@@ -420,5 +436,89 @@ describe('o registro de sistema da movimentação', () => {
     expect(response.statusCode).toBe(422);
 
     expect(await timelineOf(deal.id)).toHaveLength(before.length);
+  });
+});
+
+/*
+ * O registro que o encerramento deixa.
+ *
+ * É o mesmo mecanismo da movimentação, com uma diferença que vale um bloco
+ * próprio: encerrar é **uma** escrita que muda três colunas, e por isso deixa
+ * **um** registro. Um "estágio alterado para Fechado" ao lado do "negócio
+ * encerrado" contaria o mesmo acontecimento duas vezes num histórico que ninguém
+ * pode limpar depois.
+ */
+describe('o registro de sistema do encerramento', () => {
+  let deal: DealListItem;
+
+  beforeEach(async () => {
+    deal = await dealNamed(COMMENTED_DEAL_TITLE);
+  });
+
+  const close = async (result: string, id: string = deal.id) => {
+    const response = await harness.post(`/deals/${id}/close`, { result });
+    expect(response.statusCode).toBe(200);
+  };
+
+  it('deixa um registro de sistema no topo da linha do tempo', async () => {
+    await close('WON');
+    const [newest] = await timelineOf(deal.id);
+
+    expect(newest?.kind).toBe('SYSTEM');
+    // A frase vem da regra compartilhada, como a da movimentação: o histórico
+    // chama o desfecho pela mesma palavra que o botão que o registrou.
+    expect(newest?.body).toBe(dealCloseRecord('WON'));
+  });
+
+  it('nomeia o desfecho perdido com a palavra do outro botão', async () => {
+    await close('LOST');
+    const [newest] = await timelineOf(deal.id);
+
+    expect(newest?.body).toBe(dealCloseRecord('LOST'));
+  });
+
+  it('assina o registro com quem encerrou o negócio', async () => {
+    await close('WON');
+    const [newest] = await timelineOf(deal.id);
+
+    expect(newest?.author.id).toBe(harness.manager.id);
+  });
+
+  it('registra o mesmo instante da data de fechamento', async () => {
+    await close('WON');
+    const [newest] = await timelineOf(deal.id);
+    const detail = await detailOf(deal.id);
+
+    // Um relógio só para a operação inteira: o item no topo do histórico e a
+    // data de fechamento do negócio descrevem o mesmo instante.
+    expect(newest?.createdAt.getTime()).toBe(detail.closedAt?.getTime());
+  });
+
+  it('deixa um registro só, e não também o da mudança de estágio', async () => {
+    const before = await timelineOf(deal.id);
+    await close('WON');
+
+    expect(await timelineOf(deal.id)).toHaveLength(before.length + 1);
+  });
+
+  it('não registra nada quando o negócio já estava encerrado', async () => {
+    await close('WON');
+    const after = await timelineOf(deal.id);
+
+    const response = await harness.post(`/deals/${deal.id}/close`, { result: 'LOST' });
+    expect(response.statusCode).toBe(409);
+
+    expect(await timelineOf(deal.id)).toHaveLength(after.length);
+  });
+
+  it('não apaga o que já estava no histórico', async () => {
+    const before = await timelineOf(deal.id);
+    await close('LOST');
+
+    // O encerramento acrescenta ao histórico; ele não é o fim dele.
+    const timeline = await timelineOf(deal.id);
+    expect(timeline.slice(1).map((item) => item.id)).toEqual(
+      before.map((item) => item.id),
+    );
   });
 });

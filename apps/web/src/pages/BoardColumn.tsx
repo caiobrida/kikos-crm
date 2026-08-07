@@ -1,7 +1,7 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
   STAGE_MOVE_REFUSALS,
-  refuseStageMove,
+  stageDrop,
   type DealBoardColumn,
   type DealListItem,
   type DealStage,
@@ -26,11 +26,12 @@ import { DealCard } from './DealCard';
  * páginas ao início — a página 3 de uma busca não significa nada na seguinte.
  *
  * A coluna também é o alvo do arrasto, e é aqui que a regra do funil age antes
- * de qualquer ida ao servidor: `refuseStageMove` — a **mesma função** que a
- * rota consulta — decide se este estágio aceita o card que está no ar. Uma
- * coluna que recusa não chama `preventDefault`, e o navegador desenha o cursor
- * de "não pode" e nem chega a disparar o drop. Ela também diz por quê, num
- * aviso sobreposto que não desloca o board enquanto o card está no ar.
+ * de qualquer ida ao servidor: `stageDrop` — a **mesma regra** que a rota
+ * consulta, lida do lado do gesto — decide o que soltar o card no ar faria
+ * aqui. Uma coluna que recusa não chama `preventDefault`, e o navegador desenha
+ * o cursor de "não pode" e nem chega a disparar o drop. Ela também diz por quê
+ * — ou, na coluna Fechado, o que o drop vai abrir —, num aviso sobreposto que
+ * não desloca o board enquanto o card está no ar.
  */
 export interface BoardColumnProps {
   readonly column: DealBoardColumn;
@@ -38,7 +39,16 @@ export interface BoardColumnProps {
   readonly view: BoardView;
   /** O card que está sendo arrastado neste instante, se houver algum. */
   readonly dragging: DealListItem | undefined;
-  readonly onMove: (deal: DealListItem, to: DealStage) => void;
+  /**
+   * O vendedor escolheu este estágio para este negócio — arrastando até a
+   * coluna, ou pelo seletor do card.
+   *
+   * Não se chama `onMove` desde que Fechado deixou de recusar o drop: escolher
+   * a coluna Fechado não move nada, abre a escolha entre Ganho e Perdido
+   * (ADR-0003). Quem traduz a escolha em ação é o board, que é quem sabe qual
+   * das duas coisas fazer.
+   */
+  readonly onStageChosen: (deal: DealListItem, to: DealStage) => void;
   /** Abre o resumo do negócio no painel lateral. Só atravessa a coluna. */
   readonly onOpen: (deal: DealListItem) => void;
   readonly onDragStart: (deal: DealListItem) => void;
@@ -49,7 +59,7 @@ export const BoardColumn = ({
   column,
   view,
   dragging,
-  onMove,
+  onStageChosen,
   onOpen,
   onDragStart,
   onDragEnd,
@@ -66,12 +76,28 @@ export const BoardColumn = ({
    */
   const isDropTarget = dragging !== undefined && dragging.stage !== column.stage;
 
-  /** Por que esta coluna recusa o card no ar, ou `undefined` se ela o aceita. */
-  const refusal = isDropTarget
-    ? refuseStageMove(dragging.stage, column.stage)
-    : undefined;
+  /**
+   * O que soltar aqui faria — mover, abrir a escolha de desfecho, ou nada.
+   *
+   * `stageDrop` e não `refuseStageMove`: a coluna pergunta o que o **gesto**
+   * faz, e desde a fatia que encerra negócios a resposta tem três formas. A
+   * regra do funil não mudou — a rota de estágio continua recusando `CLOSED`
+   * com 422 —; o que mudou é que esta coluna passou a aceitar o drop para abrir
+   * a escolha entre Ganho e Perdido (ADR-0003).
+   */
+  const drop = isDropTarget ? stageDrop(dragging.stage, column.stage) : undefined;
 
-  const accepts = isDropTarget && refusal === undefined;
+  const accepts = drop !== undefined && drop.kind !== 'refused';
+
+  /** O que a coluna tem a dizer sobre o card no ar: por que recusa, ou o que fará. */
+  const hint =
+    drop === undefined
+      ? undefined
+      : drop.kind === 'refused'
+        ? STAGE_MOVE_REFUSALS[drop.reason]
+        : drop.kind === 'close'
+          ? 'Solte aqui para encerrar o negócio como ganho ou perdido.'
+          : undefined;
 
   const handleDragOver = (event: DragEvent<HTMLElement>) => {
     /*
@@ -88,7 +114,7 @@ export const BoardColumn = ({
 
   const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
-    if (dragging !== undefined) onMove(dragging, column.stage);
+    if (dragging !== undefined) onStageChosen(dragging, column.stage);
   };
 
   return (
@@ -114,23 +140,33 @@ export const BoardColumn = ({
       </header>
 
       {/*
-        O motivo da recusa, **dentro da coluna que recusa e por cima dela**. Os
-        dois detalhes têm razão de ser: aqui a frase está onde o cursor já está,
-        e sobreposta ela não empurra coluna nenhuma — um aviso que crescesse no
-        fluxo da página deslocaria o board **no meio do arrasto**, e o card
-        cairia numa coluna que não é a que o vendedor mirou.
+        O que esta coluna tem a dizer sobre o card no ar, **dentro dela e por
+        cima dela**. Os dois detalhes têm razão de ser: aqui a frase está onde o
+        cursor já está, e sobreposta ela não empurra coluna nenhuma — um aviso
+        que crescesse no fluxo da página deslocaria o board **no meio do
+        arrasto**, e o card cairia numa coluna que não é a que o vendedor mirou.
 
-        A frase é a mesma que a API devolveria, porque as duas saem da regra
-        compartilhada. `aria-hidden` porque ela dura o gesto e não sobrevive ao
-        drop; quem não arrasta nunca a encontra, e a recusa que **acontece** é
-        anunciada pelo aviso do board.
+        Ela diz duas coisas conforme o gesto: por que a coluna recusa — e aí é a
+        mesma frase que a API devolveria, porque as duas saem da regra
+        compartilhada — ou o que soltar aqui vai abrir, no caso da coluna
+        Fechado, onde o drop não move e sim pergunta.
+
+        `aria-hidden` porque ela dura o gesto e não sobrevive ao drop; quem não
+        arrasta nunca a encontra, e o que **acontece** é anunciado pelo aviso do
+        board ou pelo diálogo que abre.
       */}
-      {refusal === undefined ? null : (
+      {hint === undefined ? null : (
         <p
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-3 top-14 z-10 rounded-lg bg-surface-950/95 px-3 py-2 text-xs text-lost-300 ring-1 ring-lost-500/40"
+          className={cn(
+            'pointer-events-none absolute inset-x-3 top-14 z-10 rounded-lg px-3 py-2 text-xs',
+            'bg-surface-950/95 ring-1',
+            accepts
+              ? 'text-brand-300 ring-brand-500/40'
+              : 'text-lost-300 ring-lost-500/40',
+          )}
         >
-          {STAGE_MOVE_REFUSALS[refusal]}
+          {hint}
         </p>
       )}
 
@@ -142,7 +178,7 @@ export const BoardColumn = ({
             <DealCard
               key={deal.id}
               deal={deal}
-              onMove={onMove}
+              onStageChosen={onStageChosen}
               onOpen={onOpen}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}

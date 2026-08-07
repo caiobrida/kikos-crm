@@ -2,6 +2,7 @@ import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_STAGES,
   DealId,
+  type ClosedDealResult,
   type DealBoardQuery,
   type DealListQuery,
   type DealResult,
@@ -60,6 +61,8 @@ export interface DealWithRelations {
   readonly title: string;
   readonly valueInCents: number;
   readonly stage: DealStage;
+  /** O que pinta o card de verde ou vermelho na coluna Fechado (ADR-0003). */
+  readonly result: DealResult;
   readonly lead: LeadSummary;
   readonly owner: UserSummary;
 }
@@ -113,6 +116,24 @@ export type NewDeal = Omit<DealRecord, 'id' | 'deletedAt'>;
  */
 export interface DealStageMove {
   readonly stage: DealStage;
+  readonly at: Date;
+}
+
+/**
+ * O que o encerramento escreve no negócio: o desfecho escolhido e o momento.
+ *
+ * O estágio **não** está aqui, e a ausência é a decisão: encerrar move para
+ * `CLOSED` sempre, e quem grava sabe disso. Se o estágio fosse parâmetro, existiria
+ * uma chamada capaz de gravar um desfecho deixando o negócio no meio do funil —
+ * exatamente o estado que ADR-0003 declara inalcançável. Uma escrita, três
+ * colunas, e nenhuma delas escolhível por quem chama.
+ *
+ * `at` alimenta a data de fechamento **e** a última interação, pelo mesmo motivo
+ * do `DealStageMove`: encerrar é um acontecimento, e todo acontecimento avança a
+ * última interação.
+ */
+export interface DealClose {
+  readonly result: ClosedDealResult;
   readonly at: Date;
 }
 
@@ -205,6 +226,16 @@ export class DealRepository extends Context.Tag('DealRepository')<
       id: DealId,
       move: DealStageMove,
     ) => Effect.Effect<DealWithRelations>;
+    /**
+     * Encerra o negócio — resultado, data de fechamento e estágio numa escrita
+     * só — e devolve o card no mesmo formato da listagem.
+     *
+     * **Não recusa nada**, como `moveToStage`: quem decide se o encerramento
+     * vale é a regra pura (`refuseDealClose`), acima da seam, e quem confere se
+     * o negócio ainda está lá é o caso de uso. O que esta camada garante é a
+     * outra metade de ADR-0003 — que as três colunas nunca andem separadas.
+     */
+    readonly close: (id: DealId, close: DealClose) => Effect.Effect<DealWithRelations>;
   }
 >() {}
 
@@ -341,6 +372,7 @@ export const DealRepositoryInMemory = (
           title: deal.title,
           valueInCents: deal.valueInCents,
           stage: deal.stage,
+          result: deal.result,
           lead,
           owner,
         };
@@ -433,6 +465,43 @@ export const DealRepositoryInMemory = (
         Effect.map(([deals, leads]) => [deals, summarize(leads)] as const),
       );
 
+      /**
+       * Aplica uma escrita ao negócio visível e devolve o card já resolvido.
+       *
+       * As duas escritas do funil — mover e encerrar — diferem no **que**
+       * mudam, e em nada mais: as duas atualizam atomicamente, releem e
+       * resolvem o `JOIN` do card. O que cada uma monta é o `changes`, que é
+       * justamente a parte que ADR-0003 quer ver escrita num lugar só.
+       *
+       * `id` e `deletedAt` ficam de fora do tipo porque nenhuma escrita do
+       * funil os toca: identificador não muda, e remoção lógica é outra
+       * operação.
+       */
+      const write = (
+        id: DealId,
+        changes: Partial<Omit<DealRecord, 'id' | 'deletedAt'>>,
+      ): Effect.Effect<DealWithRelations> =>
+        Effect.gen(function* () {
+          /*
+           * `Ref.updateAndGet` é o `update` seguido de leitura, numa operação
+           * atômica: em TypeScript comum seria `store = f(store); return store`,
+           * com a diferença de que aqui ninguém pode ler entre as duas metades.
+           */
+          const deals = yield* Ref.updateAndGet(store, (current) =>
+            current.map((deal) => (isVisible(id)(deal) ? { ...deal, ...changes } : deal)),
+          );
+
+          const deal = deals.find(isVisible(id));
+          if (deal === undefined) {
+            // Defeito, não erro de domínio: o caso de uso já conferiu com
+            // `findById` que o negócio está lá antes de mandar escrever.
+            throw new Error(`O negócio ${id} sumiu entre a leitura e a escrita.`);
+          }
+
+          const leads = yield* Ref.get(leadStore);
+          return resolve(deal, summarize(leads));
+        });
+
       return {
         list: (query) =>
           world.pipe(Effect.map(([deals, leadsById]) => select(deals, leadsById, query))),
@@ -518,27 +587,21 @@ export const DealRepositoryInMemory = (
           ),
 
         moveToStage: (id, move) =>
-          Effect.gen(function* () {
-            const moved = { stage: move.stage, lastInteractionAt: move.at };
+          write(id, { stage: move.stage, lastInteractionAt: move.at }),
 
-            /*
-             * `Ref.updateAndGet` é o `update` seguido de leitura, numa operação
-             * atômica: em TypeScript comum seria `store = f(store); return store`,
-             * com a diferença de que aqui ninguém pode ler entre as duas metades.
-             */
-            const deals = yield* Ref.updateAndGet(store, (current) =>
-              current.map((deal) => (isVisible(id)(deal) ? { ...deal, ...moved } : deal)),
-            );
-
-            const deal = deals.find(isVisible(id));
-            if (deal === undefined) {
-              // Defeito, não erro de domínio: o caso de uso já conferiu com
-              // `findById` que o negócio está lá antes de mandar movê-lo.
-              throw new Error(`O negócio ${id} sumiu entre a leitura e o movimento.`);
-            }
-
-            const leads = yield* Ref.get(leadStore);
-            return resolve(deal, summarize(leads));
+        close: (id, closing) =>
+          /*
+           * As três colunas de ADR-0003 numa escrita só, e o `at` nas duas
+           * datas: encerrar é um acontecimento, e a data de fechamento e a
+           * última interação descrevem o mesmo instante. `stage` é constante e
+           * não vem do parâmetro — chega-se em Fechado por aqui, e por nenhum
+           * outro caminho.
+           */
+          write(id, {
+            result: closing.result,
+            closedAt: closing.at,
+            stage: 'CLOSED',
+            lastInteractionAt: closing.at,
           }),
       };
     }),
