@@ -39,7 +39,15 @@ export const toHttpError = (error: DomainError): HttpError => {
       return { status: 401, body: { error: error._tag, message: error.message } };
 
     case 'OwnerNotFound':
+    case 'LeadNotFound':
       return { status: 404, body: { error: error._tag, message: error.message } };
+
+    /*
+     * 422, e não 400: a entrada está bem formada e o valor pertence ao
+     * vocabulário — o que o CRM recusa é o movimento pedido no funil.
+     */
+    case 'InvalidStageTransition':
+      return { status: 422, body: { error: error._tag, message: error.message } };
 
     default: {
       const unmapped: never = error;

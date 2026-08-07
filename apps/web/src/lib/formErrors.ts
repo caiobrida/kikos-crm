@@ -1,4 +1,5 @@
 import type { ValidationIssue } from '@kikos/domain';
+import type { FieldValues, Path, UseFormSetError } from 'react-hook-form';
 import { ApiError } from './api';
 
 /*
@@ -51,3 +52,26 @@ export const generalError = (
  */
 export const errorProp = (message: string | undefined) =>
   message === undefined ? {} : { error: message };
+
+/**
+ * Acomoda a recusa da API embaixo dos campos que ela apontou.
+ *
+ * A queixa da API vem no mesmo formato do resolver — `{ path, message }` —,
+ * então ela cai no lugar sem tradução. O que esta função faz é a única parte
+ * que precisa de cuidado: **só repassa caminho que é campo do formulário**. Um
+ * `path` que a tela não desenha viraria um erro pendurado num campo inexistente,
+ * e o formulário nunca mais se daria por válido.
+ *
+ * O que sobrar — a recusa que não pertence a campo nenhum — é assunto do
+ * `generalError`, no aviso do topo.
+ */
+export const applyApiIssues = <Values extends FieldValues>(
+  error: unknown,
+  fields: readonly Path<Values>[],
+  setError: UseFormSetError<Values>,
+): void => {
+  for (const issue of issuesOf(error)) {
+    const field = fields.find((candidate) => candidate === issue.path);
+    if (field !== undefined) setError(field, { message: issue.message });
+  }
+};

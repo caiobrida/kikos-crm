@@ -74,8 +74,37 @@ export class OwnerNotFound extends Data.TaggedError('OwnerNotFound')<{
 }> {}
 
 /**
+ * O Lead vinculado não existe — ou foi removido. → 404
+ *
+ * Como o `OwnerNotFound`, é queixa que só o servidor sabe fazer: o campo de
+ * Lead do cadastro foi preenchido escolhendo um contato de uma busca, e a busca
+ * pode ter sido feita minutos antes.
+ */
+export class LeadNotFound extends Data.TaggedError('LeadNotFound')<{
+  readonly message: string;
+}> {}
+
+/**
+ * O movimento pedido não existe no Pipeline. → 422
+ *
+ * **422, e não 400**: o valor é um estágio legítimo do vocabulário, e o corpo
+ * da requisição está bem formado — o que o CRM recusa é o movimento. Hoje a
+ * queixa nasce de um negócio que tentou nascer em `CLOSED`; na fatia de
+ * movimentação ela passa a cobrir também o card arrastado para a coluna
+ * Fechado (ADR-0003).
+ */
+export class InvalidStageTransition extends Data.TaggedError('InvalidStageTransition')<{
+  readonly message: string;
+}> {}
+
+/**
  * A união de tudo que um programa de domínio pode falhar. Cresce a cada fatia,
  * e é ela que torna o mapa de erro para HTTP verificável pelo compilador.
  */
 export type DomainError =
-  ValidationFailed | InvalidCredentials | Unauthorized | OwnerNotFound;
+  | ValidationFailed
+  | InvalidCredentials
+  | Unauthorized
+  | OwnerNotFound
+  | LeadNotFound
+  | InvalidStageTransition;

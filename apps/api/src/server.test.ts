@@ -1,23 +1,14 @@
 import { HealthResponse } from '@kikos/domain';
 import { describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
-import { Layer } from 'effect';
-import { DealRepositoryInMemory } from './repositories/DealRepository';
-import { LeadRepositoryInMemory } from './repositories/LeadRepository';
-import { UserRepositoryInMemory } from './repositories/UserRepository';
+import { InMemoryRepositories } from './repositories/inMemory';
 import { makeRuntime } from './runtime';
 import { buildServer } from './server';
 
 /** `/health` não consulta nada, mas o servidor exige um runtime para montar. */
 const buildHealthServer = () =>
   buildServer({
-    runtime: makeRuntime(
-      Layer.mergeAll(
-        UserRepositoryInMemory([]),
-        LeadRepositoryInMemory([], []),
-        DealRepositoryInMemory([], [], []),
-      ),
-    ),
+    runtime: makeRuntime(InMemoryRepositories({ users: [], leads: [], deals: [] })),
     logger: false,
   });
 

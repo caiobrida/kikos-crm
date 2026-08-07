@@ -1,8 +1,8 @@
 import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_STAGES,
+  DealId,
   type DealBoardQuery,
-  type DealId,
   type DealListQuery,
   type DealResult,
   type DealSortBy,
@@ -13,7 +13,8 @@ import {
   type UserId,
   type UserSummary,
 } from '@kikos/domain';
-import { Context, Effect, Layer, Ref } from 'effect';
+import { Context, Effect, Layer, Ref, Schema } from 'effect';
+import { randomUUID } from 'node:crypto';
 import type { LeadRecord } from './LeadRepository';
 import type { Slice } from './Slice';
 import type { UserRecord } from './UserRepository';
@@ -62,6 +63,17 @@ export interface DealWithRelations {
   readonly owner: UserSummary;
 }
 
+/**
+ * Um Deal a caminho do banco: a linha inteira menos o identificador, que o
+ * banco gera, e menos `deletedAt`, que só a remoção lógica escreve.
+ *
+ * `result`, `closedAt` e `lastInteractionAt` **estão** aqui, e não são default
+ * de coluna: o caso de uso os decide — em aberto, sem data de fechamento, agora
+ * — e esta camada apenas grava. É o que mantém a regra acima da seam, onde os
+ * testes a alcançam sem banco.
+ */
+export type NewDeal = Omit<DealRecord, 'id' | 'deletedAt'>;
+
 /** Uma coluna do board: a primeira leva de cards e o total real da coluna. */
 export interface DealColumn {
   readonly stage: DealStage;
@@ -106,6 +118,13 @@ export class DealRepository extends Context.Tag('DealRepository')<
     readonly list: (query: DealListQuery) => Effect.Effect<Slice<DealWithRelations>>;
     /** As cinco colunas do board, cada uma com a primeira página e o total. */
     readonly board: (query: DealBoardQuery) => Effect.Effect<readonly DealColumn[]>;
+    /**
+     * Grava o negócio e devolve o card como o board o desenha — com o Lead e o
+     * responsável já resolvidos, que é o que a rota responde no 201. O mesmo
+     * formato da listagem, pelo mesmo motivo do Lead: um Schema só descrevendo
+     * "um Deal como o CRM o mostra".
+     */
+    readonly create: (deal: NewDeal) => Effect.Effect<DealWithRelations>;
   }
 >() {}
 
@@ -157,29 +176,43 @@ const compareBy = (
   }
 };
 
+/** Os Leads como o `JOIN` do card os enxerga: identificador, nome e empresa. */
+const summarize = (leads: readonly LeadRecord[]): ReadonlyMap<LeadId, LeadSummary> =>
+  new Map(
+    leads.map((lead) => [
+      lead.id,
+      { id: lead.id, name: lead.name, company: lead.company },
+    ]),
+  );
+
+/**
+ * A Layer em memória.
+ *
+ * Os dois `Ref` vêm de fora, e o dos Leads é **o mesmo** que o repositório de
+ * Lead escreve (ver `inMemory.ts`). Não é detalhe de montagem: sem isso, um
+ * negócio criado para um contato cadastrado na mesma sessão não teria como
+ * resolver o `JOIN` do card, e o teste que cobre esse caminho falharia por
+ * limitação do duble — não por defeito do produto.
+ */
 export const DealRepositoryInMemory = (
-  initialDeals: readonly DealRecord[],
-  /** Os Leads e os Users que a listagem usa para resolver o `JOIN` à mão. */
-  leads: readonly LeadRecord[],
+  store: Ref.Ref<readonly DealRecord[]>,
+  leadStore: Ref.Ref<readonly LeadRecord[]>,
   users: readonly UserRecord[],
 ): Layer.Layer<DealRepository> =>
   Layer.effect(
     DealRepository,
-    Effect.gen(function* () {
-      const store = yield* Ref.make<readonly DealRecord[]>(initialDeals);
-
-      const leadsById = new Map<LeadId, LeadSummary>(
-        leads.map((lead) => [
-          lead.id,
-          { id: lead.id, name: lead.name, company: lead.company },
-        ]),
-      );
-
+    // `Effect.sync` e não `Effect.gen`: com o estado vindo de fora, montar o
+    // serviço não espera por Effect nenhum.
+    Effect.sync(() => {
+      // Os Users não mudam: o CRM não cadastra conta (ADR-0001).
       const owners = new Map<UserId, UserSummary>(
         users.map((user) => [user.id, { id: user.id, name: user.name }]),
       );
 
-      const resolve = (deal: DealRecord): DealWithRelations => {
+      const resolve = (
+        deal: DealRecord,
+        leadsById: ReadonlyMap<LeadId, LeadSummary>,
+      ): DealWithRelations => {
         const lead = leadsById.get(deal.leadId);
         const owner = owners.get(deal.ownerId);
 
@@ -203,7 +236,11 @@ export const DealRepositoryInMemory = (
       };
 
       // O mesmo que o `mode: 'insensitive'` do Prisma faz virar `ILIKE '%termo%'`.
-      const matchesSearch = (deal: DealRecord, term: string): boolean => {
+      const matchesSearch = (
+        deal: DealRecord,
+        term: string,
+        leadsById: ReadonlyMap<LeadId, LeadSummary>,
+      ): boolean => {
         const needle = term.toLocaleLowerCase();
         const lead = leadsById.get(deal.leadId);
 
@@ -216,6 +253,7 @@ export const DealRepositoryInMemory = (
         deals: readonly DealRecord[],
         sortBy: DealSortBy,
         order: SortOrder,
+        leadsById: ReadonlyMap<LeadId, LeadSummary>,
       ): readonly DealRecord[] => {
         const compare = compareBy(sortBy, leadsById, owners);
         const direction = order === 'asc' ? 1 : -1;
@@ -234,6 +272,7 @@ export const DealRepositoryInMemory = (
 
       const select = (
         deals: readonly DealRecord[],
+        leadsById: ReadonlyMap<LeadId, LeadSummary>,
         query: DealListQuery,
       ): Slice<DealWithRelations> => {
         const matching = deals.filter(
@@ -241,32 +280,68 @@ export const DealRepositoryInMemory = (
             // O filtro de remoção lógica vem primeiro e não é opcional.
             deal.deletedAt === null &&
             (query.stage === undefined || deal.stage === query.stage) &&
-            (query.search === undefined || matchesSearch(deal, query.search)) &&
+            (query.search === undefined ||
+              matchesSearch(deal, query.search, leadsById)) &&
             (query.ownerId === undefined || deal.ownerId === query.ownerId),
         );
 
-        const ordered = sortDeals(matching, query.sortBy, query.order);
+        const ordered = sortDeals(matching, query.sortBy, query.order, leadsById);
         const from = (query.page - 1) * query.pageSize;
 
         return {
-          data: ordered.slice(from, from + query.pageSize).map(resolve),
+          data: ordered
+            .slice(from, from + query.pageSize)
+            .map((deal) => resolve(deal, leadsById)),
           // O total é do recorte inteiro, não da página devolvida.
           total: matching.length,
         };
       };
 
+      /*
+       * O funil e a carteira lidos no mesmo instante. Ler os dois a cada
+       * consulta, em vez de guardar os Leads na montagem, é o que faz um
+       * contato cadastrado agora já estar resolvido no card do negócio
+       * seguinte.
+       *
+       * `Effect.all` sobre uma tupla é o `Promise.all` do Effect: ele espera os
+       * dois e devolve os resultados na mesma ordem.
+       */
+      const world = Effect.all([Ref.get(store), Ref.get(leadStore)]).pipe(
+        Effect.map(([deals, leads]) => [deals, summarize(leads)] as const),
+      );
+
       return {
-        list: (query) => Ref.get(store).pipe(Effect.map((deals) => select(deals, query))),
+        list: (query) =>
+          world.pipe(Effect.map(([deals, leadsById]) => select(deals, leadsById, query))),
 
         board: (query) =>
-          Ref.get(store).pipe(
-            Effect.map((deals) =>
+          world.pipe(
+            Effect.map(([deals, leadsById]) =>
               DEAL_STAGES.map((stage) => {
-                const slice = select(deals, boardColumnQuery(stage, query));
+                const slice = select(deals, leadsById, boardColumnQuery(stage, query));
                 return { stage, total: slice.total, deals: slice.data };
               }),
             ),
           ),
+
+        create: (deal) =>
+          Effect.gen(function* () {
+            /*
+             * O identificador nasce aqui porque no Postgres ele nasce no banco
+             * (`@default(uuid())`): as duas Layers precisam responder a mesma
+             * coisa a quem chamou, e quem chamou não escolhe identificador.
+             */
+            const record: DealRecord = {
+              ...deal,
+              id: Schema.decodeSync(DealId)(randomUUID()),
+              deletedAt: null,
+            };
+
+            yield* Ref.update(store, (deals) => [...deals, record]);
+
+            const leads = yield* Ref.get(leadStore);
+            return resolve(record, summarize(leads));
+          }),
       };
     }),
   );

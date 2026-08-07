@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { INITIAL_BOARD_VIEW, boardViewKey, useBoard, type BoardView } from '../lib/deals';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useSellers } from '../lib/sellers';
+import { Button } from '../ui/Button';
 import { Input } from '../ui/Field';
 import { OwnerFilter } from '../ui/OwnerFilter';
 import { BoardColumn } from './BoardColumn';
+import { CreateDealModal } from './CreateDealModal';
 
 /*
  * O board de Negócios.
@@ -27,6 +29,12 @@ const countLabel = (total: number): string => {
 
 export const DealsBoardPage = () => {
   const [view, setView] = useState<BoardView>(INITIAL_BOARD_VIEW);
+  /*
+   * O modal é montado só quando está aberto, e não escondido com `open={false}`:
+   * assim cada cadastro começa com o formulário em branco, sem depender de
+   * alguém lembrar de limpá-lo ao fechar.
+   */
+  const [isCreating, setIsCreating] = useState(false);
   const sellers = useSellers();
 
   /*
@@ -43,14 +51,20 @@ export const DealsBoardPage = () => {
 
   return (
     <div className="px-8 py-10">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-ink">Negócios</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          {total === undefined
-            ? 'Carregando o funil…'
-            : `${countLabel(total)} no recorte atual.`}
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink">Negócios</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            {total === undefined
+              ? 'Carregando o funil…'
+              : `${countLabel(total)} no recorte atual.`}
+          </p>
+        </div>
+
+        <Button onClick={() => setIsCreating(true)}>Cadastrar Novo Negócio</Button>
       </header>
+
+      {isCreating ? <CreateDealModal onClose={() => setIsCreating(false)} /> : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="min-w-64 flex-1">

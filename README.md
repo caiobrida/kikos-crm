@@ -48,8 +48,9 @@ O seed cria um gestor, três vendedores, catorze Leads e vinte e um Negócios. A
 
 Depois de entrar, a barra lateral leva a Dashboard, Leads, Negócios e Vendedores. **Leads** é a
 carteira, com busca, filtros, ordenação e paginação, e o botão "Criar Novo Lead" que cadastra um
-contato. **Negócios** é o funil como board, com uma coluna por Stage; ainda é só leitura —
-arrastar, abrir e encerrar chegam nas fatias seguintes, como Dashboard e Vendedores. A
+contato. **Negócios** é o funil como board, com uma coluna por Stage, e o botão "Cadastrar Novo
+Negócio" que abre uma oportunidade sobre um contato da carteira; arrastar, abrir e encerrar
+chegam nas fatias seguintes, como Dashboard e Vendedores. A
 **vitrine das primitivas** da fatia 01 (botão, campo, selo, avatar, modal e tabela nas suas
 variações) continua em <http://localhost:5173/primitivas>; o selo no topo dela consulta
 `/api/health`, e se estiver verde o proxy e a API estão de pé.
@@ -94,8 +95,13 @@ um endpoint paralelo depois.
 
 Valores monetários são `Int` em centavos no banco, no JSON e no domínio. O `Decimal` do Prisma
 atravessaria o JSON como string e complicaria o Schema; ponto flutuante acumularia erro ao somar
-o funil no dashboard. A divisão por cem acontece num lugar só, na borda que desenha —
-`formatBRL`, em `apps/web/src/lib/money.ts`.
+o funil no dashboard.
+
+Reais e centavos só se encontram na borda que desenha, em `apps/web/src/lib/money.ts`:
+`formatBRL` divide por cem para mostrar, `parseBRL` multiplica por cem para ler o que foi
+digitado. É por isso que o campo "Valor estimado" do cadastro de negócio aceita `12.500,00` e
+manda `1250000` — e recusa o ponto como decimal, porque em português `1.250` são mil duzentos e
+cinquenta reais e ler isso como um real e vinte e cinco seria decidir por quem digitou.
 
 ## Um Schema, duas pontas
 
@@ -116,6 +122,24 @@ Sobram para o servidor as duas coisas que o navegador não tem como saber: se o 
 responsável escolhido ainda existe — senão `OwnerNotFound`, 404 — e com que status e com que
 data o contato nasce. "Novo, agora" é regra do CRM, e é por isso que nenhum dos dois campos
 existe no Schema de entrada: não há como o corpo da requisição escolhê-los.
+
+### O cadastro de negócio acrescenta uma regra pura
+
+`CreateDealInput` faz o mesmo trabalho para "Cadastrar Novo Negócio", e traz duas coisas que o
+cadastro de Lead não tinha.
+
+A primeira é uma **regra pura compartilhada**, em `packages/domain/src/pipeline.ts`: quais Stages
+aceitam um negócio em aberto. As duas pontas leem da mesma lista — o formulário monta o
+`<select>` a partir de `OPEN_DEAL_STAGES` e nem oferece "Fechado"; a rota recusa quem enviar
+`CLOSED` por fora da tela com `isOpenDealStage`, derivado dessa lista. A recusa é
+**422, e não 400**: o valor é
+um Stage legítimo do vocabulário e o corpo está bem formado; o que não existe é o movimento.
+Chega-se em Fechado marcando Ganho ou Perdido (ADR-0003).
+
+A segunda é a **sincronização do status do Lead**. Criar um negócio move o contato vinculado
+para "Em contato" e atualiza a última interação dele, com a regra "último evento vence" do spec.
+É o que faz a lista de Leads e o board contarem a mesma história sem que ninguém precise
+atualizar duas telas na mão.
 
 ## Estrutura
 
@@ -235,6 +259,21 @@ curl -s -b /tmp/kikos.txt 'localhost:3333/deals?stage=PROPOSAL_SENT&pageSize=5&p
 # A busca do board atravessa o JOIN: "bodytech" é a empresa do Lead, não o
 # título do negócio.
 curl -s -b /tmp/kikos.txt 'localhost:3333/deals?search=bodytech'
+
+# A inserção de negócio, que também só existe na Layer de Prisma. Pegue um
+# "id" de Lead e um de vendedor das duas consultas acima.
+curl -s -b /tmp/kikos.txt 'localhost:3333/leads?search=juliana'
+curl -s -b /tmp/kikos.txt -X POST localhost:3333/deals \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Teste Prisma","valueInCents":1250000,"stage":"NEW",
+       "leadId":"COLE_O_ID_DO_LEAD","ownerId":"COLE_O_ID_DO_VENDEDOR"}'
+# 201, e o Lead vinculado passa a aparecer com status "CONTACT" em /leads
+
+# O negócio não nasce fechado: 422, e nada é criado.
+curl -s -b /tmp/kikos.txt -X POST localhost:3333/deals \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Teste 422","valueInCents":1000,"stage":"CLOSED",
+       "leadId":"COLE_O_ID_DO_LEAD","ownerId":"COLE_O_ID_DO_VENDEDOR"}'
 ```
 
 ## Effect

@@ -9,7 +9,7 @@ import {
   type UserId,
   type UserSummary,
 } from '@kikos/domain';
-import { Context, Effect, Layer, Ref, Schema } from 'effect';
+import { Context, Effect, Layer, Option, Ref, Schema } from 'effect';
 import { randomUUID } from 'node:crypto';
 import type { Slice } from './Slice';
 import type { UserRecord } from './UserRepository';
@@ -63,6 +63,19 @@ export type LeadWithOwner = Omit<
 export type NewLead = Omit<LeadRecord, 'id' | 'deletedAt'>;
 
 /**
+ * O que uma ação de Deal escreve no Lead vinculado: o status novo e o momento
+ * do acontecimento.
+ *
+ * Os dois andam juntos de propósito — quem decide o status é o domínio, com a
+ * regra "último evento vence", e a mesma ação é o que torna este o contato de
+ * última interação mais recente da carteira (ver o verbete em CONTEXT.md).
+ */
+export interface LeadInteraction {
+  readonly status: LeadStatus;
+  readonly at: Date;
+}
+
+/**
  * O repositório de Lead.
  *
  * **O filtro que exclui registros removidos mora aqui, e em nenhum outro
@@ -80,12 +93,27 @@ export class LeadRepository extends Context.Tag('LeadRepository')<
     /** Busca, filtro, ordenação e paginação, resolvidos de uma vez só. */
     readonly list: (query: LeadListQuery) => Effect.Effect<Slice<LeadWithOwner>>;
     /**
+     * O contato, ou `Option.none()` — inclusive quando ele existe mas foi
+     * removido. É o que responde "esse Lead ainda está aí?" antes de vincular
+     * um negócio a ele.
+     */
+    readonly findById: (id: LeadId) => Effect.Effect<Option.Option<LeadRecord>>;
+    /**
      * Grava o contato e devolve a linha como a lista a mostra — com o
      * responsável já resolvido, que é o que a rota responde no 201. Devolver o
      * mesmo formato da listagem, e não o registro cru, mantém um Schema só
      * descrevendo "um Lead como o CRM o mostra".
      */
     readonly create: (lead: NewLead) => Effect.Effect<LeadWithOwner>;
+    /**
+     * Sincroniza o contato depois de uma ação de Deal. Não faz nada se o Lead
+     * não existir ou tiver sido removido — quem precisa da recusa é o caso de
+     * uso, e ele já perguntou antes de escrever.
+     */
+    readonly recordLeadInteraction: (
+      id: LeadId,
+      interaction: LeadInteraction,
+    ) => Effect.Effect<void>;
   }
 >() {}
 
@@ -171,16 +199,21 @@ const sortLeads = (
   });
 };
 
+/**
+ * O `Ref` vem de fora, e não é criado aqui dentro: o repositório de Deal lê a
+ * mesma célula para resolver o `JOIN` do card, então um contato cadastrado
+ * agora já está lá quando o negócio seguinte o vincula. Ver `inMemory.ts`.
+ */
 export const LeadRepositoryInMemory = (
-  initialLeads: readonly LeadRecord[],
+  store: Ref.Ref<readonly LeadRecord[]>,
   /** Os Users que a listagem usa para resolver o responsável — o `JOIN` à mão. */
   users: readonly UserRecord[],
 ): Layer.Layer<LeadRepository> =>
   Layer.effect(
     LeadRepository,
-    Effect.gen(function* () {
-      const store = yield* Ref.make<readonly LeadRecord[]>(initialLeads);
-
+    // `Effect.sync` e não `Effect.gen`: com o estado vindo de fora, montar o
+    // serviço não espera por Effect nenhum.
+    Effect.sync(() => {
       const owners = new Map<UserId, UserSummary>(
         users.map((user) => [user.id, { id: user.id, name: user.name }]),
       );
@@ -222,6 +255,29 @@ export const LeadRepositoryInMemory = (
             yield* Ref.update(store, (leads) => [...leads, record]);
             return withOwner(record);
           }),
+
+        findById: (id) =>
+          Ref.get(store).pipe(
+            Effect.map((leads) =>
+              Option.fromNullable(
+                // O filtro de remoção lógica vale aqui como em toda leitura.
+                leads.find((lead) => lead.id === id && lead.deletedAt === null),
+              ),
+            ),
+          ),
+
+        recordLeadInteraction: (id, interaction) =>
+          Ref.update(store, (leads) =>
+            leads.map((lead) =>
+              lead.id === id && lead.deletedAt === null
+                ? {
+                    ...lead,
+                    status: interaction.status,
+                    lastInteractionAt: interaction.at,
+                  }
+                : lead,
+            ),
+          ),
 
         list: (query) =>
           Ref.get(store).pipe(

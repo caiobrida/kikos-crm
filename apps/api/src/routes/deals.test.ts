@@ -2,16 +2,21 @@ import {
   BOARD_COLUMN_PAGE_SIZE,
   DEAL_STAGES,
   DealBoard,
+  DealListItem,
   DealPage,
   DealSortBy,
+  LeadListItem,
+  LeadPage,
   type DealBoardColumn,
   type DealStage,
 } from '@kikos/domain';
 import { afterEach, beforeEach, describe, expect, it } from '@effect/vitest';
 import { Schema } from 'effect';
+import { randomUUID } from 'node:crypto';
 import {
   CROWDED_STAGE,
   DELETED_DEAL_TITLE,
+  DELETED_LEAD_NAME,
   VISIBLE_DEAL_COUNT,
   dealsInStage,
   dealsOwnedBy,
@@ -66,6 +71,21 @@ const totalsOf = (deals: DealBoard): readonly number[] =>
 
 const titlesIn = (page: DealPage): readonly string[] =>
   page.data.map((deal) => deal.title);
+
+/**
+ * Um contato da carteira, achado do mesmo jeito que a tela o acha: pela busca
+ * da lista de Leads. É assim que o formulário de negócio descobre o
+ * identificador que vai no corpo — e é por isso que o teste não vai buscá-lo na
+ * fixture.
+ */
+const leadNamed = async (name: string): Promise<LeadListItem> => {
+  const response = await harness.get(`/leads?search=${encodeURIComponent(name)}`);
+  expect(response.statusCode).toBe(200);
+
+  const lead = Schema.decodeUnknownSync(LeadPage)(response.json()).data.at(0);
+  if (lead === undefined) throw new Error(`O contato "${name}" não está na carteira.`);
+  return lead;
+};
 
 describe('GET /deals/board', () => {
   describe('o funil', () => {
@@ -341,6 +361,227 @@ describe('GET /deals', () => {
 
     it('recusa um pageSize que pediria o funil inteiro', async () => {
       await expectRejection('?pageSize=100000', 'pageSize');
+    });
+  });
+});
+
+/*
+ * O contrato de `POST /deals`.
+ *
+ * O formulário e esta rota são validados pelo mesmo Schema, então o que estes
+ * testes provam não é "a API recusa" — é o que **só o servidor sabe**:
+ *
+ * - se o Lead e o responsável escolhidos ainda existem (404);
+ * - que negócio nenhum nasce fechado (422, e não 400: o estágio existe, o
+ *   movimento é que não);
+ * - que criar um negócio **sincroniza o status do Lead**, que é a regra que
+ *   liga o board à lista de contatos.
+ */
+describe('POST /deals', () => {
+  /** O contato que os cadastros deste bloco vinculam. Nasce como Novo. */
+  const LEAD_NAME = 'Ana Beatriz Souza';
+  let lead: LeadListItem;
+
+  beforeEach(async () => {
+    lead = await leadNamed(LEAD_NAME);
+  });
+
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    title: 'Esteiras da unidade nova',
+    // Centavos inteiros: quem digita reais é a tela, que converte antes de enviar.
+    valueInCents: 1_250_000,
+    leadId: lead.id,
+    ownerId: harness.seller.id,
+    stage: 'NEW',
+    expectedCloseDate: '2026-09-20',
+    description: 'Doze esteiras, com instalação.',
+    ...overrides,
+  });
+
+  /** Cadastra e decodifica a resposta com o Schema que o card do board usa. */
+  const create = async (overrides: Record<string, unknown> = {}) => {
+    const response = await harness.post('/deals', payload(overrides));
+
+    expect(response.statusCode).toBe(201);
+    return Schema.decodeUnknownSync(DealListItem)(response.json());
+  };
+
+  const rejection = async (overrides: Record<string, unknown>, status: number) => {
+    const response = await harness.post('/deals', payload(overrides));
+
+    expect(response.statusCode).toBe(status);
+    return response.json<{
+      error: string;
+      message: string;
+      issues?: { path: string }[];
+    }>();
+  };
+
+  /** Quantos negócios o funil inteiro tem — o que uma recusa não pode mexer. */
+  const dealCount = async (): Promise<number> => (await list('?pageSize=100')).total;
+
+  describe('o cadastro', () => {
+    it('recusa quem não está logado', async () => {
+      const response = await harness.app.inject({
+        method: 'POST',
+        url: '/deals',
+        payload: payload(),
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('devolve o negócio criado, já com o Lead e o responsável resolvidos', async () => {
+      const deal = await create();
+
+      expect(deal.title).toBe('Esteiras da unidade nova');
+      expect(deal.valueInCents).toBe(1_250_000);
+      // O card do board desenha os dois; devolvê-los resolvidos é o que permite
+      // responder no mesmo Schema da listagem.
+      expect(deal.lead).toEqual({ id: lead.id, name: lead.name, company: lead.company });
+      expect(deal.owner).toEqual({ id: harness.seller.id, name: harness.seller.name });
+    });
+
+    it('faz o card aparecer na coluna do estágio escolhido', async () => {
+      const before = columnOf(await board(), 'PROPOSAL_SENT');
+      const deal = await create({ stage: 'PROPOSAL_SENT' });
+      const after = columnOf(await board(), 'PROPOSAL_SENT');
+
+      expect(after.total).toBe(before.total + 1);
+      // Recém-criado é o mais recente, e a coluna vem do mais recente para o
+      // mais antigo: o card nasce no topo dela.
+      expect(after.deals.at(0)?.id).toBe(deal.id);
+    });
+
+    it('deixa o negócio em aberto, fora da coluna Fechado', async () => {
+      const before = columnOf(await board(), 'CLOSED');
+      await create();
+
+      expect(columnOf(await board(), 'CLOSED').total).toBe(before.total);
+    });
+
+    it('aceita um responsável diferente do dono do Lead', async () => {
+      // Quem prospecta nem sempre é quem fecha: o formulário só pré-preenche.
+      expect(lead.owner.id).toBe(harness.seller.id);
+      const deal = await create({ ownerId: harness.manager.id });
+
+      expect(deal.owner.id).toBe(harness.manager.id);
+      expect((await leadNamed(LEAD_NAME)).owner.id).toBe(harness.seller.id);
+    });
+
+    it('aceita cadastrar sem data prevista e sem descrição', async () => {
+      const deal = await create({ expectedCloseDate: '', description: '' });
+
+      expect(deal.title).toBe('Esteiras da unidade nova');
+    });
+
+    it('vincula um contato cadastrado agora, sem passo intermediário', async () => {
+      const response = await harness.post('/leads', {
+        name: 'Juliana Prado',
+        company: 'Smart Fit Morumbi',
+        email: 'juliana.prado@smartfitmorumbi.com.br',
+        phone: '(11) 98812-4471',
+        source: 'REFERRAL',
+        ownerId: harness.seller.id,
+      });
+      const created = Schema.decodeUnknownSync(LeadListItem)(response.json());
+
+      const deal = await create({ leadId: created.id });
+
+      expect(deal.lead.name).toBe('Juliana Prado');
+    });
+  });
+
+  describe('o status do Lead', () => {
+    it('move o contato vinculado para Em contato', async () => {
+      expect(lead.status).toBe('NEW');
+      await create();
+
+      // A regra "último evento vence": quem tem negócio aberto está em contato.
+      expect((await leadNamed(LEAD_NAME)).status).toBe('CONTACT');
+    });
+
+    it('registra a criação como última interação do contato', async () => {
+      const before = lead.lastInteractionAt.getTime();
+      await create();
+
+      expect((await leadNamed(LEAD_NAME)).lastInteractionAt.getTime()).toBeGreaterThan(
+        before,
+      );
+    });
+
+    it('não mexe no status de quem não recebeu negócio', async () => {
+      await create();
+
+      expect((await leadNamed('Carla Dias')).status).toBe('NEGOTIATION');
+    });
+  });
+
+  describe('a recusa', () => {
+    it('devolve 404 quando o Lead escolhido não existe', async () => {
+      const before = await dealCount();
+      const body = await rejection({ leadId: randomUUID() }, 404);
+
+      expect(body.error).toBe('LeadNotFound');
+      expect(body.message).not.toBe('');
+      expect(await dealCount()).toBe(before);
+    });
+
+    it('devolve 404 quando o Lead escolhido foi removido', async () => {
+      const removed = harness.leads.find((record) => record.name === DELETED_LEAD_NAME);
+      const body = await rejection({ leadId: removed?.id }, 404);
+
+      // Contato removido não existe para quem lê — nem para quem vincula.
+      expect(body.error).toBe('LeadNotFound');
+    });
+
+    it('devolve 404 quando o responsável escolhido não existe', async () => {
+      const body = await rejection({ ownerId: randomUUID() }, 404);
+
+      expect(body.error).toBe('OwnerNotFound');
+    });
+
+    it('devolve 422 quando o estágio inicial é Fechado', async () => {
+      const before = await dealCount();
+      const body = await rejection({ stage: 'CLOSED' }, 422);
+
+      /*
+       * 422, e não 400: `CLOSED` é um estágio legítimo do vocabulário e o corpo
+       * está bem formado. O que não existe é o movimento — chega-se em Fechado
+       * marcando Ganho ou Perdido (ADR-0003).
+       */
+      expect(body.error).toBe('InvalidStageTransition');
+      expect(await dealCount()).toBe(before);
+    });
+
+    it('aponta o campo obrigatório em branco, e não cadastra nada', async () => {
+      const before = await dealCount();
+      const body = await rejection({ title: '   ' }, 400);
+
+      expect(body.error).toBe('ValidationFailed');
+      expect(body.issues?.map((issue) => issue.path)).toContain('title');
+      expect(await dealCount()).toBe(before);
+    });
+
+    it('aponta o valor negativo e o valor acima do teto', async () => {
+      expect((await rejection({ valueInCents: -1 }, 400)).issues?.at(0)?.path).toBe(
+        'valueInCents',
+      );
+      expect(
+        (await rejection({ valueInCents: 1_000_000_001 }, 400)).issues?.at(0)?.path,
+      ).toBe('valueInCents');
+    });
+
+    it('recusa um estágio fora do vocabulário', async () => {
+      const body = await rejection({ stage: 'QUASE_FECHANDO' }, 400);
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('stage');
+    });
+
+    it('recusa uma data prevista malformada', async () => {
+      const body = await rejection({ expectedCloseDate: '20/09/2026' }, 400);
+
+      expect(body.issues?.map((issue) => issue.path)).toContain('expectedCloseDate');
     });
   });
 });

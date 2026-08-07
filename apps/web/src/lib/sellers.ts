@@ -3,6 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import { apiJson } from './api';
 
 /**
+ * A queixa do campo de responsável quando a lista não veio.
+ *
+ * Vive junto da consulta que falhou, e não em cada formulário: um `<select>`
+ * vazio sem explicação parece defeito da tela, e os dois cadastros do CRM
+ * precisam dizer a mesma coisa sobre a mesma falha.
+ */
+export const SELLERS_UNAVAILABLE =
+  'Não foi possível carregar os vendedores. Recarregue a página.';
+
+/**
  * Os vendedores — quem recebe Lead e Deal, e quem o filtro de responsável
  * lista.
  *

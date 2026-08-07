@@ -16,8 +16,14 @@ import { Schema } from 'effect';
 import { apiJson } from './api';
 import { toQueryString } from './queryString';
 
-/** O prefixo de toda consulta de Lead — é por ele que o cadastro as invalida. */
-const leadsQueryKey = ['leads'] as const;
+/**
+ * O prefixo de toda consulta de Lead — é por ele que o cadastro as invalida.
+ *
+ * Exportado porque a criação de um negócio também mexe na carteira: ela muda o
+ * status do contato vinculado, e quem invalida por lá precisa apontar para o
+ * mesmo prefixo daqui.
+ */
+export const leadsQueryKey = ['leads'] as const;
 
 /**
  * O recorte que a tela de Leads está mostrando.
@@ -62,6 +68,43 @@ export const useLeads = (view: LeadsView) =>
      * Mantém a página anterior na tela enquanto a nova carrega. Sem isso, cada
      * clique em "próxima" pisca uma tabela vazia antes de preenchê-la de novo.
      */
+    placeholderData: keepPreviousData,
+  });
+
+/** Quantos contatos o campo de busca do cadastro de negócio oferece por vez. */
+const LEAD_SEARCH_SIZE = 8;
+
+/**
+ * Os contatos que casam com o termo — o que o campo de Lead do cadastro de
+ * negócio mostra enquanto se digita.
+ *
+ * É a mesma consulta da lista de Leads, com outro recorte: ordenada por nome,
+ * porque é pelo nome que se procura, e curta, porque é uma lista que cabe
+ * embaixo de um campo. **A busca continua acontecendo no servidor** — o campo
+ * não baixa a carteira para filtrar no navegador, e por isso ele funciona igual
+ * com trinta ou trinta mil contatos.
+ *
+ * `enabled` evita a consulta enquanto o campo não está em uso: o formulário
+ * abre com o Lead ainda por escolher, e um `<select>` de vendedores já basta de
+ * requisição na abertura.
+ */
+export const useLeadSearch = (search: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [...leadsQueryKey, 'search', search] as const,
+    queryFn: ({ signal }) =>
+      apiJson(
+        LeadPage,
+        `/leads${toQueryString({
+          search,
+          sortBy: 'name',
+          order: 'asc',
+          pageSize: LEAD_SEARCH_SIZE,
+        })}`,
+        { signal },
+      ),
+    enabled,
+    // Mantém a lista anterior enquanto a nova carrega, para o campo não piscar
+    // vazio a cada pausa na digitação.
     placeholderData: keepPreviousData,
   });
 

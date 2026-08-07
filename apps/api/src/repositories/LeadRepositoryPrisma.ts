@@ -1,8 +1,8 @@
 import type { LeadId, LeadListQuery, LeadSortBy, SortOrder, UserId } from '@kikos/domain';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Option } from 'effect';
 import type { Prisma } from '../generated/prisma/client';
 import { createPrismaClient } from '../prisma';
-import { LeadRepository, type LeadWithOwner } from './LeadRepository';
+import { LeadRepository, type LeadRecord, type LeadWithOwner } from './LeadRepository';
 import { escapeLikeWildcards } from './like';
 
 /*
@@ -34,6 +34,36 @@ const toLeadWithOwner = (row: LeadRow): LeadWithOwner => ({
   ...row,
   id: row.id as LeadId,
   owner: { id: row.owner.id as UserId, name: row.owner.name },
+});
+
+/**
+ * O `SELECT` da linha inteira do domínio — as colunas que `LeadRecord` declara,
+ * e nenhuma a mais. É o que o caso de uso lê para conferir se o contato ainda
+ * está aí antes de vincular um negócio a ele.
+ */
+const RECORD_SELECT = {
+  id: true,
+  name: true,
+  company: true,
+  email: true,
+  phone: true,
+  jobTitle: true,
+  source: true,
+  status: true,
+  ownerId: true,
+  notes: true,
+  lastInteractionAt: true,
+  deletedAt: true,
+} satisfies Prisma.LeadSelect;
+
+type LeadRecordRow = Prisma.LeadGetPayload<{ select: typeof RECORD_SELECT }>;
+
+const toLeadRecord = (row: LeadRecordRow): LeadRecord => ({
+  ...row,
+  // As marcas dos identificadores: o Prisma devolve `string`, o domínio pede o
+  // tipo marcado. A conferência de forma já foi feita pelo banco.
+  id: row.id as LeadId,
+  ownerId: row.ownerId as UserId,
 });
 
 /**
@@ -102,6 +132,31 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
           const row = await prisma.lead.create({ data: lead, select: LIST_SELECT });
 
           return toLeadWithOwner(row);
+        }),
+
+      findById: (id) =>
+        Effect.promise(async () =>
+          Option.fromNullable(
+            // O filtro de remoção lógica mora aqui, como em toda leitura:
+            // `findFirst` com a cláusula, e não `findUnique` pelo identificador.
+            await prisma.lead.findFirst({
+              where: { id, deletedAt: null },
+              select: RECORD_SELECT,
+            }),
+          ).pipe(Option.map(toLeadRecord)),
+        ),
+
+      recordLeadInteraction: (id, interaction) =>
+        Effect.promise(async () => {
+          /*
+           * `updateMany` e não `update`: só ele aceita `deletedAt` no `where`.
+           * Um contato removido não é sincronizado, e a operação não estoura —
+           * quem precisava da recusa é o caso de uso, que perguntou antes.
+           */
+          await prisma.lead.updateMany({
+            where: { id, deletedAt: null },
+            data: { status: interaction.status, lastInteractionAt: interaction.at },
+          });
         }),
 
       list: (query) =>
