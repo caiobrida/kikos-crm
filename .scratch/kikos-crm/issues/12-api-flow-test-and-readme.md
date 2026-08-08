@@ -6,17 +6,17 @@ funcionando com dados — sem descobrir passo nenhum por tentativa. E a suíte p
 
 **Blocked by:** 10, 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Branch:** `chore/api-flow-test-and-docs`
 
-- [ ] O teste de fluxo passa sem Postgres rodando
-- [ ] Todo erro de domínio chega no teste com o status da tabela de mapeamento
-- [ ] CI verde: lint, formatação, tipos e testes
-- [ ] Um clone limpo, seguindo só o README, chega ao CRM funcionando com dados de exemplo
-- [ ] O `.env.example` não tem variável a mais nem a menos que o código lê
-- [ ] Os quatro ADRs refletem o que foi construído
-- [ ] O `CONTEXT.md` não ganhou termos novos sem registro durante a implementação
+- [x] O teste de fluxo passa sem Postgres rodando
+- [x] Todo erro de domínio chega no teste com o status da tabela de mapeamento
+- [x] CI verde: lint, formatação, tipos e testes
+- [x] Um clone limpo, seguindo só o README, chega ao CRM funcionando com dados de exemplo
+- [x] O `.env.example` não tem variável a mais nem a menos que o código lê
+- [x] Os quatro ADRs refletem o que foi construído
+- [x] O `CONTEXT.md` não ganhou termos novos sem registro durante a implementação
 
 ## Decisões que valem lembrar
 
@@ -52,3 +52,32 @@ Fechar com o que ficou fora de escopo e o que seria diferente em produção: `ar
 
 **Rodar o passo a passo do README num diretório limpo de verdade, não de memória.** É o primeiro
 contato de quem avalia, e um passo faltando ali custa mais caro que qualquer bug.
+
+## Comments
+
+**Fechado.** O teste de fluxo é `apps/api/src/flow.test.ts`: uma sessão só, do login à remoção,
+mais o mapa de erro inteiro como um `Record<DomainError['_tag'], number>` — exaustivo por
+construção, como o `switch` de `toHttpError`. A ordem do passo a passo saiu da do ticket num
+ponto: `DELETE /leads/:id` com negócio em aberto acontece **antes** do encerramento, porque
+depois dele o contato não tem mais negócio aberto e a recusa não existiria. O 204 depois do
+encerramento fecha a história — a recusa era um estado, não um muro.
+
+O clone limpo foi rodado de verdade, num diretório fora do repositório, seguindo só o README:
+instalação, `.env`, compose com volume novo, quatro migrations, seed (4 usuários, 14 leads, 21
+negócios, 15 registros) e os dois apps de pé. Login 200, `/leads` sem cookie 401, board com
+Proposta enviada em 7 e cinco cards, dashboard agregado e o proxy `/api` do Vite respondendo.
+
+`.env.example` bate exatamente com o que o código lê — catorze variáveis, nenhuma a mais nem a
+menos.
+
+Três coisas que o ticket não previa saíram do caminho:
+
+- **ADR-0002** ganhou o custo que a seam de repositório compra: um caso de uso que escreve em dois
+  repositórios não escreve numa transação só.
+- **ADR-0003** ganhou que remover um negócio fechado é permitido, e perdeu a linha que dizia que o
+  frontend recusa o drop inválido — desde a fatia do encerramento, `stageDrop` lê a recusa de
+  `CLOSED` como a escolha entre Ganho e Perdido, e um card encerrado nem é arrastável.
+- **`CONTEXT.md`** ganhou Board, Dossier e Timeline, que já eram tipos do pacote compartilhado
+  (`DealBoard`, `LeadDossier`, `DealTimeline`) sem verbete.
+
+A tela de Vendedores (ticket 13, opcional) segue como marcador, e o README diz isso.

@@ -44,6 +44,18 @@ _Avoid_: Oportunidade, Venda, Proposta
 A sequência ordenada de Stages pela qual um Deal caminha.
 _Avoid_: Fluxo, Processo
 
+**Board (Quadro)**:
+O Pipeline visto como kanban: uma coluna por Stage, cada uma com os Deals que estão nele e o
+total real da coluna. É a leitura do funil inteiro numa ida ao servidor, e não uma listagem
+paginada — um kanban não tem "página 2".
+_Avoid_: Kanban (em nomes de código), Quadro (idem)
+
+**Dossier (Dossiê)**:
+Os dados do Lead mostrados dentro do detalhamento de um Deal — nome, empresa, telefone, e-mail
+e Owner. Existe para que o vendedor ligue sem trocar de tela, e continua legível mesmo depois
+de o Lead ser removido.
+_Avoid_: Cliente, Ficha, Perfil
+
 **Stage (Estágio)**:
 Onde o Deal está no Pipeline — a coluna do kanban. Diz respeito ao _andamento_ da negociação.
 _Avoid_: Status (reservado para o Lead), Fase, Coluna
@@ -65,6 +77,11 @@ Um registro no histórico de um Deal, sempre atribuído a um User. Existe em dua
 distinguidas pelo `kind`: escrito por uma pessoa (`USER`) ou gerado pelo sistema ao registrar
 uma ação (`SYSTEM`).
 _Avoid_: Nota, Mensagem, Activity, Observação (reservado para o campo livre do Lead)
+
+**Timeline (Linha do Tempo)**:
+A sequência de Comments de um Deal, do mais recente para o mais antigo. É registro histórico:
+Comment não é editável nem removível, e um registro de sistema não pode ser apagado.
+_Avoid_: Histórico (em nomes de código), Feed, Log
 
 **Last Interaction (Última Interação)**:
 O momento do último acontecimento relevante em um Lead ou Deal — criação, comentário,

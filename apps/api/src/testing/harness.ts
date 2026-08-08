@@ -385,6 +385,12 @@ export const openDealsOfLead = (lead: string): number =>
 /** O contato com **um** negócio em aberto só: o caso do singular na recusa. */
 export const LEAD_WITH_ONE_OPEN_DEAL = 'Fabio Gomes';
 
+/** Um negócio já encerrado: o que recusa toda escrita que mude o desfecho. */
+export const CLOSED_DEAL_TITLE = 'Kit de acessórios funcionais';
+
+/** Um negócio em aberto: o que a regra do funil ainda deixa mover. */
+export const OPEN_DEAL_TITLE = 'Renovação do parque de máquinas';
+
 /** O negócio em aberto desse contato — o que precisa sair antes de removê-lo. */
 export const OPEN_DEAL_OF_THAT_LEAD = 'Reposição de anilhas';
 
