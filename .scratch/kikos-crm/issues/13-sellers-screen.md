@@ -62,3 +62,15 @@ Duas coisas que o ticket não previa:
 
 Verificado contra o banco de verdade, e não só contra a Layer em memória: a carga da Ana Paula bate
 com `GET /leads?ownerId=` (4) e com a soma das quatro colunas não-Fechado do board dela (9).
+
+**Da revisão**, três correções: o `toOwnerCounts` saiu para módulo próprio, ao lado de
+`escapeLikeWildcards`, porque os dois repositórios que contam por responsável precisam devolver a
+mesma forma; `closedDealsOwnedBy` e `closedValueOwnedBy` da harness passaram a pedir
+`ClosedDealResult`, que é o tipo que impede um contador chamado "closed" de responder por negócio em
+aberto; e o bloco de prosa do topo de `routes/users.ts` voltou a ser `/* */`, porque com o caso de
+uso novo entre ele e `registerUserRoutes` o `/** */` não documentava mais nada.
+
+**Fica registrado, e não foi mexido:** com a consulta em erro, o cabeçalho diz "Carregando o time…"
+ao mesmo tempo que o `Alert` diz que falhou. É o padrão da casa — `LeadsPage` e `DashboardPage` têm
+a mesma forma —, e consertá-lo só aqui deixaria duas convenções na mesma pasta. Vale como fatia
+própria, nas três telas de uma vez.

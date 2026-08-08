@@ -9,6 +9,7 @@ import {
   type LeadWithOwner,
 } from './LeadRepository';
 import { escapeLikeWildcards } from './like';
+import { toOwnerCounts } from './ownerCounts';
 
 /*
  * A implementação sobre Prisma.
@@ -251,12 +252,7 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
             where: { deletedAt: null },
             _count: { _all: true },
           }),
-        ).pipe(
-          Effect.map(
-            (rows) =>
-              new Map(rows.map((row) => [row.ownerId as UserId, row._count._all])),
-          ),
-        ),
+        ).pipe(Effect.map(toOwnerCounts)),
 
       list: (query) =>
         Effect.promise(async () => {

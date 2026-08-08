@@ -10,14 +10,14 @@ import { LeadRepository } from '../repositories/LeadRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import type { AppRuntime } from '../runtime';
 
-/**
+/*
  * O time comercial, para os lugares que precisam escolher um responsável: o
  * filtro de vendedor da lista de Leads, o `<select>` dos formulários e a tela de
  * Vendedores.
  *
  * Não existe tabela de vendedor (ADR-0001): "vendedor" é um User com `role`
- * igual a `SELLER`, e é por isso que a rota é `/users?role=SELLER` e não
- * `/sellers`.
+ * igual a `SELLER`, e é por isso que as rotas são `/users` e `/users/workload`,
+ * as duas com `?role=SELLER`, e não `/sellers`.
  */
 
 /**

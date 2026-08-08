@@ -129,7 +129,9 @@ describe('GET /users/workload', () => {
   it('não conta como em aberto o negócio que acabou de ser encerrado', async () => {
     const deal = harness.deals.find((candidate) => candidate.title === OPEN_DEAL_TITLE);
 
-    const closed = await harness.post(`/deals/${deal?.id}/close`, { result: 'WON' });
+    const closed = await harness.post(`/deals/${deal?.id ?? ''}/close`, {
+      result: 'WON',
+    });
     expect(closed.statusCode).toBe(200);
 
     const response = await harness.get('/users/workload?role=SELLER');

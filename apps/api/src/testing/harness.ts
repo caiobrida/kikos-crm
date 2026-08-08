@@ -4,6 +4,7 @@ import {
   LeadId,
   UserId,
   stageMoveRecord,
+  type ClosedDealResult,
   type CommentKind,
   type DealResult,
   type DealStage,
@@ -363,16 +364,22 @@ const dealsOf = (owner: 'manager' | 'seller', result: DealResult) =>
     (fixture) => fixture.owner === owner && (fixture.result ?? 'OPEN') === result,
   );
 
-/** Quantos negócios um responsável ganhou ou perdeu — a barra do vendedor. */
+/**
+ * Quantos negócios um responsável ganhou ou perdeu — a barra do vendedor.
+ *
+ * `ClosedDealResult` e não `DealResult`: em aberto não encerra nada, e o tipo
+ * estreito é o que impede este contador de responder por uma pergunta que o
+ * nome dele não faz (ver `DealTally` no pacote de domínio).
+ */
 export const closedDealsOwnedBy = (
   owner: 'manager' | 'seller',
-  result: DealResult,
+  result: ClosedDealResult,
 ): number => dealsOf(owner, result).length;
 
 /** O valor somado desses negócios. */
 export const closedValueOwnedBy = (
   owner: 'manager' | 'seller',
-  result: DealResult,
+  result: ClosedDealResult,
 ): number =>
   dealsOf(owner, result).reduce((sum, fixture) => sum + fixture.valueInCents, 0);
 
