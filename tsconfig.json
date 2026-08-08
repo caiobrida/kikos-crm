@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  /*
+   * A função serverless da Vercel, que é o único código fora dos workspaces.
+   *
+   * Este arquivo existe por causa dela: o compilador da Vercel lê o
+   * `tsconfig.json` da **raiz do projeto**, e sem ele cai no default `nodenext`
+   * — que exige `.js` explícito em todo import relativo e reprova o repositório
+   * inteiro com `TS2835`. O `bundler` de `tsconfig.base.json` é o que os
+   * workspaces já usam.
+   */
+  "include": ["api"]
+}
