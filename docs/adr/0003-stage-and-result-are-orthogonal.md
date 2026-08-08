@@ -18,6 +18,11 @@ como ganho ou perdido, e uma vez fechado o Deal é terminal.
   poderia anotar por que a venda foi perdida, que é justamente o que se quer ler depois. A
   fronteira: as três escritas acima mudam o desfecho de um negócio encerrado; um comentário só
   registra que alguém voltou a falar dele.
+- **Remover um Deal fechado é permitido**, e a ausência da recusa é deliberada. As três escritas
+  acima mudam o _desfecho_ de um negócio encerrado; a remoção lógica retira o registro inteiro,
+  que é exatamente o que se quer de um negócio cadastrado por engano — inclusive de um que foi
+  encerrado por engano junto. É a mesma fronteira do comentário, do outro lado: uma acrescenta
+  ao histórico sem mudar o desfecho, a outra retira o negócio sem reescrevê-lo.
 - O estado `stage = CLOSED, result = OPEN` é inalcançável, então a coluna Fechado sempre sabe
   pintar cada card de verde ou vermelho.
 - A regra de transição é uma função pura no pacote compartilhado, então o frontend recusa o
