@@ -13,6 +13,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from '@tanstack/react-query';
 import { Schema } from 'effect';
 import { apiJson, apiSend } from './api';
@@ -32,7 +33,7 @@ const detailQueryKey = [...leadsQueryKey, 'detail'] as const;
  * não recarregasse continuaria mostrando o nome antigo até alguém atualizar a
  * página.
  */
-const invalidateLeadsAndDeals = (queryClient: ReturnType<typeof useQueryClient>) =>
+const invalidateLeadsAndDeals = (queryClient: QueryClient) =>
   Promise.all([
     queryClient.invalidateQueries({ queryKey: leadsQueryKey }),
     queryClient.invalidateQueries({ queryKey: dealsQueryKey }),
