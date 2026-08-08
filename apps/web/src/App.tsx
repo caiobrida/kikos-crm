@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from './layout/AppShell';
 import { ComingSoonPage } from './pages/ComingSoonPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { DealsBoardPage } from './pages/DealsBoardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
@@ -23,15 +24,7 @@ export const App = () => (
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
 
-        <Route
-          path="/dashboard"
-          element={
-            <ComingSoonPage
-              title="Dashboard"
-              description="O valor parado em cada Stage do funil, o comparativo por vendedor e a tabela de negócios."
-            />
-          }
-        />
+        <Route path="/dashboard" element={<DashboardPage />} />
 
         <Route path="/leads" element={<LeadsPage />} />
 
@@ -42,6 +35,13 @@ export const App = () => (
           de board responde por este caminho e desenha o modal por cima. É o que
           faz recarregar manter o modal aberto, o botão voltar fechá-lo, e o
           link ser compartilhável — sem que o funil deixe de estar por trás.
+        */}
+        {/*
+          **Um negócio, um endereço.** A tabela do dashboard abre o detalhamento
+          por este mesmo caminho, e não por um `/dashboard/:dealId` paralelo: o
+          link que alguém manda a um colega tem de ser um só, e duas rotas para o
+          mesmo registro seriam duas respostas para "qual é o endereço deste
+          negócio?".
         */}
         <Route path="/negocios/:dealId" element={<DealsBoardPage />} />
 

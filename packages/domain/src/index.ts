@@ -9,6 +9,7 @@
 export * from './auth';
 export * from './choice';
 export * from './comment';
+export * from './dashboard';
 export * from './dates';
 export * from './deal';
 export * from './enums';

@@ -47,3 +47,21 @@ export const ValueInCents = Schema.Number.pipe(
 );
 
 export type ValueInCents = typeof ValueInCents.Type;
+
+/**
+ * A **soma** de vários valores, em centavos.
+ *
+ * Distinto de `ValueInCents` por causa do teto, e só por causa dele: o limite de
+ * R$ 10.000.000,00 é o de um negócio que alguém cadastra, não o de uma coluna do
+ * funil inteira. Somar dez negócios no teto passaria dele sem que nada de errado
+ * tivesse acontecido, e um Schema que recusasse a soma faria o dashboard falhar
+ * exatamente na empresa em que ele mais teria o que dizer.
+ *
+ * O que continua valendo é o resto: inteiro, em centavos, não negativo. Ele não
+ * valida entrada nenhuma — nunca chega num corpo de requisição —, mas é o mesmo
+ * Schema nas duas pontas de `GET /dashboard/summary`, como todo o resto do
+ * contrato.
+ */
+export const TotalInCents = Schema.Int.pipe(Schema.greaterThanOrEqualTo(0));
+
+export type TotalInCents = typeof TotalInCents.Type;

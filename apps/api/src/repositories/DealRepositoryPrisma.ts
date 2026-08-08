@@ -1,5 +1,6 @@
 import {
   DEAL_STAGES,
+  type ClosedDealResult,
   type DealId,
   type DealListQuery,
   type DealSortBy,
@@ -361,6 +362,80 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
           ]);
 
           return { data: rows.map(toDealWithRelations), total };
+        }),
+
+      tally: () =>
+        Effect.promise(async () => {
+          /*
+           * **Duas agregações, um instante só do banco.** As duas metades
+           * descrevem o mesmo negócio por lados diferentes (ADR-0003) — a
+           * coluna em que ele está e o resultado com que terminou —, e os dois
+           * gráficos do dashboard não podem se contradizer. Um encerramento
+           * confirmado entre as duas consultas produziria um negócio já na
+           * coluna Fechado que ainda não foi ganho por ninguém.
+           *
+           * `isolationLevel` é o que de fato compra essa garantia, e não a
+           * transação sozinha: no `READ COMMITTED` do Postgres — o default —
+           * **cada comando tira o seu próprio retrato** do banco, e duas
+           * agregações dentro da mesma transação podem cair uma de cada lado de
+           * um commit. `RepeatableRead` fixa o retrato na primeira leitura, e as
+           * duas passam a enxergar o mesmo funil.
+           *
+           * O `GROUP BY` faz o trabalho no banco: o que atravessa a rede são
+           * dez linhas de contagem, e não a tabela de negócios inteira.
+           */
+          const [byStage, byOwner] = await prisma.$transaction(
+            [
+              prisma.deal.groupBy({
+                by: ['stage'],
+                // O filtro de remoção lógica, como em toda leitura desta camada.
+                where: { deletedAt: null },
+                _count: { _all: true },
+                _sum: { valueInCents: true },
+              }),
+              prisma.deal.groupBy({
+                by: ['ownerId', 'result'],
+                // Em aberto não encerra nada: quem está no funil já está
+                // contado pela agregação acima.
+                where: { deletedAt: null, result: { not: 'OPEN' } },
+                _count: { _all: true },
+                _sum: { valueInCents: true },
+              }),
+            ],
+            { isolationLevel: 'RepeatableRead' },
+          );
+
+          return {
+            /*
+             * As cinco colunas, e não as que o `GROUP BY` devolveu: uma coluna
+             * sem negócio nenhum não aparece na agregação, e ela precisa
+             * aparecer no gráfico — como no board, um estágio vazio também é
+             * informação sobre o funil. A Layer em memória repõe as mesmas.
+             */
+            byStage: DEAL_STAGES.map((stage) => {
+              const row = byStage.find((candidate) => candidate.stage === stage);
+
+              return {
+                stage,
+                count: row?._count._all ?? 0,
+                // `_sum` é `null` quando o grupo não tem linha: o banco não
+                // soma o vazio, e "nada somado" são zero centavos.
+                valueInCents: row?._sum.valueInCents ?? 0,
+              };
+            }),
+
+            byOwner: byOwner.map((row) => ({
+              ownerId: row.ownerId as UserId,
+              /*
+               * O `where` acabou de excluir `OPEN`, mas o tipo do Prisma
+               * carrega o enum inteiro da coluna. A marca diz ao compilador o
+               * que a consulta já garantiu.
+               */
+              result: row.result as ClosedDealResult,
+              count: row._count._all,
+              valueInCents: row._sum.valueInCents ?? 0,
+            })),
+          };
         }),
 
       board: (query) =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest';
-import { formatBRL, parseBRL } from './money';
+import { compactBRL, formatBRL, parseBRL } from './money';
 
 /*
  * O valor viaja em centavos e chega à tela em reais. A conversão é só aqui, na
@@ -29,6 +29,32 @@ describe('formatBRL', () => {
 
   it('formata valores grandes sem notação científica nem arredondamento', () => {
     expect(formatBRL(92_000_000)).toBe(`R$${NBSP}920.000,00`);
+  });
+});
+
+/*
+ * A forma abreviada, que existe para o eixo de um gráfico. Ela orienta a escala;
+ * quem responde "quanto exatamente" continua sendo `formatBRL`, no balão do
+ * hover e na tabela.
+ */
+describe('compactBRL', () => {
+  it('abrevia o milhar e o milhão com as palavras do português', () => {
+    // O espaço antes de "mil" também é o não separável: a unidade não se
+    // desgruda do número ao quebrar linha.
+    expect(compactBRL(1_250_000)).toBe(`R$${NBSP}12,5${NBSP}mil`);
+    expect(compactBRL(156_000_000)).toBe(`R$${NBSP}1,6${NBSP}mi`);
+  });
+
+  it('não abrevia o que já é curto', () => {
+    expect(compactBRL(32_000)).toBe(`R$${NBSP}320`);
+    // A marca do zero é a origem do eixo, e precisa sair sem "0,0".
+    expect(compactBRL(0)).toBe(`R$${NBSP}0`);
+  });
+
+  it('para numa casa decimal', () => {
+    // A segunda casa não muda decisão nenhuma numa marca de eixo, e é onde a
+    // abreviação começa a parecer precisão que ela não tem.
+    expect(compactBRL(1_234_567)).toBe(`R$${NBSP}12,3${NBSP}mil`);
   });
 });
 

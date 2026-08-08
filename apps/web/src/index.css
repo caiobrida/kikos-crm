@@ -26,12 +26,22 @@
   --color-ink-muted: #98a2b3;
   --color-ink-faint: #6a7383;
 
-  /* Laranja de ação. */
+  /*
+   * Laranja de ação.
+   *
+   * As duas pontas — 100 e 800 — não vestem botão nem selo: elas existem para
+   * fechar a rampa ordinal do gráfico de funil, que precisa de cinco degraus
+   * (um por estágio) com distância de claridade suficiente entre vizinhos. Com
+   * 300/400/500/600/700 os degraus do meio ficam perto demais para o olho
+   * separar; com 100/300/500/700/800 a rampa passa. Ver `ui/chartTokens.ts`.
+   */
+  --color-brand-100: #ffedd5;
   --color-brand-300: #fdba74;
   --color-brand-400: #fb923c;
   --color-brand-500: #f97316;
   --color-brand-600: #ea580c;
   --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
 
   /* Verde de ganho. */
   --color-won-300: #6ee7a8;

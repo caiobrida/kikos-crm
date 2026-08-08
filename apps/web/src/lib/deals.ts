@@ -8,7 +8,9 @@ import {
   DealPage,
   MoveDealStageInput,
   UpdateDealInput,
+  type DealSortBy,
   type DealStage,
+  type SortOrder,
 } from '@kikos/domain';
 import {
   keepPreviousData,
@@ -32,6 +34,8 @@ import { toQueryString } from './queryString';
 const boardQueryKey = [...dealsQueryKey, 'board'] as const;
 const columnQueryKey = [...dealsQueryKey, 'column'] as const;
 const detailQueryKey = [...dealsQueryKey, 'detail'] as const;
+/** A tabela paginada do dashboard, que lê a mesma rota que o "carregar mais". */
+const listQueryKey = [...dealsQueryKey, 'list'] as const;
 
 /**
  * O recorte que o board está mostrando.
@@ -98,6 +102,80 @@ export const useDeal = (id: string) =>
     queryKey: [...detailQueryKey, id] as const,
     queryFn: ({ signal }) => apiJson(DealDetail, `/deals/${id}`, { signal }),
   });
+
+/*
+ * ---------------------------------------------------------------------------
+ * A tabela de negócios
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O recorte que a tabela do dashboard está mostrando.
+ *
+ * Sem filtro de vendedor, ao contrário do board e da lista de Leads: a tabela
+ * fica embaixo de dois gráficos que já mostram o funil inteiro e o time inteiro,
+ * e um filtro que recortasse só a tabela faria a tela contar duas histórias ao
+ * mesmo tempo. Quem quer o funil de uma pessoa tem o board.
+ */
+export interface DealsView {
+  readonly search: string;
+  readonly sortBy: DealSortBy;
+  readonly order: SortOrder;
+  readonly page: number;
+}
+
+/**
+ * A tabela abre pelos negócios de maior valor.
+ *
+ * É o único lugar do CRM que não abre por "mais recente primeiro", e a diferença
+ * é a pergunta: o board mostra o que se mexeu hoje, e a tabela do dashboard
+ * existe para **descer do panorama ao caso concreto** — a barra do gráfico diz
+ * que há R$ 12 milhões parados em negociação, e a primeira linha da tabela diz
+ * quais negócios são esses.
+ */
+export const INITIAL_DEALS_VIEW: DealsView = {
+  search: '',
+  sortBy: 'valueInCents',
+  order: 'desc',
+  page: 1,
+};
+
+/**
+ * Uma página de negócios — o que a tabela do dashboard desenha.
+ *
+ * **Reusa `GET /deals`**, a mesma listagem que carrega as páginas seguintes de
+ * uma coluna cheia do board; a tabela não ganhou endpoint próprio. Como em toda
+ * listagem do CRM, nada é recortado no navegador: o `view` vira query string, e
+ * por isso ele também é a chave de cache.
+ *
+ * A chave é `['deals', 'list', …]` e não `['deals', 'column', …]` de propósito,
+ * apesar de as duas consultarem a mesma rota: o "carregar mais" do board é
+ * reescrito à mão pela mutação otimista do arrasto, e a tabela não tem por que
+ * entrar nessa reescrita — ela não é alvo de arrasto nenhum.
+ */
+export const useDeals = (view: DealsView) =>
+  useQuery({
+    queryKey: [...listQueryKey, view] as const,
+    queryFn: ({ signal }) =>
+      apiJson(DealPage, `/deals${toQueryString({ ...view })}`, { signal }),
+    /*
+     * Mantém a página anterior na tela enquanto a nova carrega, como na lista
+     * de Leads: sem isso, cada tecla digitada na busca pisca uma tabela vazia.
+     */
+    placeholderData: keepPreviousData,
+  });
+
+/**
+ * Quantos negócios, escrito como a tela fala.
+ *
+ * Mora aqui, e não em cada tela, porque o board e o dashboard contam a mesma
+ * coisa — e contam sempre o **total do servidor**, não o tamanho do que veio na
+ * página.
+ */
+export const dealCountLabel = (total: number): string => {
+  if (total === 0) return 'Nenhum negócio';
+  return total === 1 ? '1 negócio' : `${total} negócios`;
+};
 
 export interface ColumnPages {
   /** Os cards das páginas seguintes, na ordem em que foram carregadas. */
