@@ -33,11 +33,18 @@ export const formatBRL = (valueInCents: number): string => BRL.format(valueInCen
  * **Ele nunca substitui o valor exato**: o número por extenso continua no balão
  * do hover e na tabela de negócios. Abreviar é para orientar a leitura da
  * escala, não para esconder o dado.
+ *
+ * O mínimo de casas é escrito à mão, e é o que faz "R$ 320" não sair como
+ * "R$ 320,0": sem ele, o `Intl` parte das duas casas do real e as encolhe até o
+ * máximo pedido, parando em uma. O padrão mudou entre versões do Node — o 24
+ * resolve zero, o 22 resolve uma —, então declarar o zero é o que mantém o eixo
+ * igual aqui e no CI.
  */
 const BRL_COMPACT = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
   notation: 'compact',
+  minimumFractionDigits: 0,
   maximumFractionDigits: 1,
 });
 
