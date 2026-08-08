@@ -140,10 +140,20 @@ const LEAD_FIXTURES: readonly LeadFixture[] = [
 /** O nome do único Lead removido: nenhuma consulta pode devolvê-lo. */
 export const DELETED_LEAD_NAME = 'Heitor Ipanema';
 
+const visibleLeads = LEAD_FIXTURES.filter((fixture) => fixture.deleted !== true);
+
 /** Quantos Leads uma consulta sem filtro devolve. */
-export const VISIBLE_LEAD_COUNT = LEAD_FIXTURES.filter(
-  (fixture) => fixture.deleted !== true,
-).length;
+export const VISIBLE_LEAD_COUNT = visibleLeads.length;
+
+/**
+ * Quantos contatos visíveis são de um dos dois responsáveis — a carteira dele,
+ * que é o primeiro número da tela de Vendedores.
+ *
+ * O único contato removido é do gestor, então este contador só bate com o da
+ * API se o filtro de remoção lógica estiver de pé do outro lado.
+ */
+export const leadsOwnedBy = (owner: 'manager' | 'seller'): number =>
+  visibleLeads.filter((fixture) => fixture.owner === owner).length;
 
 const makeLeads = (manager: UserRecord, seller: UserRecord): readonly LeadRecord[] =>
   LEAD_FIXTURES.map((fixture, index) => ({
@@ -347,8 +357,8 @@ export const valueInStage = (stage: DealStage): number =>
     .filter((fixture) => fixture.stage === stage)
     .reduce((sum, fixture) => sum + fixture.valueInCents, 0);
 
-/** Os negócios visíveis que um responsável encerrou com este desfecho. */
-const closedDealsOf = (owner: 'manager' | 'seller', result: DealResult) =>
+/** Os negócios visíveis de um responsável com este desfecho — inclusive `OPEN`. */
+const dealsOf = (owner: 'manager' | 'seller', result: DealResult) =>
   visibleDeals.filter(
     (fixture) => fixture.owner === owner && (fixture.result ?? 'OPEN') === result,
   );
@@ -357,18 +367,30 @@ const closedDealsOf = (owner: 'manager' | 'seller', result: DealResult) =>
 export const closedDealsOwnedBy = (
   owner: 'manager' | 'seller',
   result: DealResult,
-): number => closedDealsOf(owner, result).length;
+): number => dealsOf(owner, result).length;
 
 /** O valor somado desses negócios. */
 export const closedValueOwnedBy = (
   owner: 'manager' | 'seller',
   result: DealResult,
 ): number =>
-  closedDealsOf(owner, result).reduce((sum, fixture) => sum + fixture.valueInCents, 0);
+  dealsOf(owner, result).reduce((sum, fixture) => sum + fixture.valueInCents, 0);
 
 /** Quantos negócios visíveis são de um dos dois responsáveis. */
 export const dealsOwnedBy = (owner: 'manager' | 'seller'): number =>
   visibleDeals.filter((fixture) => fixture.owner === owner).length;
+
+/**
+ * Quantos negócios **em aberto** são dele — o segundo número da tela de
+ * Vendedores.
+ *
+ * Sai da mesma lista de `dealsOwnedBy`, e é sempre menor: os dois responsáveis
+ * têm negócio encerrado na fixture, e o único negócio removido é do gestor. Os
+ * dois filtros que o contador da tela precisa aplicar aparecem, portanto, na
+ * diferença entre estes dois números.
+ */
+export const openDealsOwnedBy = (owner: 'manager' | 'seller'): number =>
+  dealsOf(owner, 'OPEN').length;
 
 /**
  * Quantos negócios **em aberto** o contato tem — o número que trava a remoção

@@ -349,6 +349,27 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
           prisma.deal.count({ where: { leadId, deletedAt: null, result: 'OPEN' } }),
         ),
 
+      countOpenByOwner: () =>
+        Effect.promise(() =>
+          /*
+           * O `GROUP BY` faz o trabalho no banco: o que atravessa a rede é uma
+           * linha por responsável. Os dois filtros do `where` são os mesmos do
+           * `countOpenByLead` — removido não conta, encerrado também não —, e é
+           * o que faz este número bater com o que o board mostra ao ser filtrado
+           * por essa mesma pessoa.
+           */
+          prisma.deal.groupBy({
+            by: ['ownerId'],
+            where: { deletedAt: null, result: 'OPEN' },
+            _count: { _all: true },
+          }),
+        ).pipe(
+          Effect.map(
+            (rows) =>
+              new Map(rows.map((row) => [row.ownerId as UserId, row._count._all])),
+          ),
+        ),
+
       list: (query) =>
         Effect.promise(async () => {
           /*

@@ -131,6 +131,25 @@ export class LeadRepository extends Context.Tag('LeadRepository')<
     /** Busca, filtro, ordenação e paginação, resolvidos de uma vez só. */
     readonly list: (query: LeadListQuery) => Effect.Effect<Slice<LeadWithOwner>>;
     /**
+     * Quantos contatos cada responsável tem — a carteira de cada um, que é o
+     * primeiro número da tela de Vendedores.
+     *
+     * **A agregação acontece no banco**, como a do dashboard: o que atravessa a
+     * rede é uma linha por responsável, e não a carteira inteira para ser
+     * contada em memória.
+     *
+     * O `JOIN` com a tabela de Users **não** acontece aqui, e nem o filtro de
+     * papel: um `GROUP BY` sobre a tabela de contatos não tem como produzir a
+     * linha de quem não tem contato nenhum, e é justamente essa linha que a tela
+     * precisa mostrar. Quem junta as duas metades é o caso de uso, que já sabe
+     * pedir o time — e é lá, acima da seam, que a decisão fica testável.
+     *
+     * Daí o `Map`: a ausência de uma chave é "nenhum contato", e quem lê escreve
+     * `?? 0` em vez de procurar numa lista. O filtro de remoção lógica vale aqui
+     * como em toda leitura desta camada.
+     */
+    readonly countByOwner: () => Effect.Effect<ReadonlyMap<UserId, number>>;
+    /**
      * O contato, ou `Option.none()` — inclusive quando ele existe mas foi
      * removido. É o que responde "esse Lead ainda está aí?" antes de vincular
      * um negócio a ele.
@@ -417,6 +436,23 @@ export const LeadRepositoryInMemory = (
                   }
                 : lead,
             ),
+          ),
+
+        countByOwner: () =>
+          Ref.get(store).pipe(
+            Effect.map((leads) => {
+              // O `GROUP BY ownerId` do outro lado da seam, escrito como
+              // acumulação num `Map`. O filtro de remoção lógica vem primeiro e
+              // não é opcional, como em toda leitura desta camada.
+              const counts = new Map<UserId, number>();
+
+              for (const lead of leads) {
+                if (lead.deletedAt !== null) continue;
+                counts.set(lead.ownerId, (counts.get(lead.ownerId) ?? 0) + 1);
+              }
+
+              return counts;
+            }),
           ),
 
         list: (query) =>

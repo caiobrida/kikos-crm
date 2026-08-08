@@ -342,6 +342,22 @@ export class DealRepository extends Context.Tag('DealRepository')<
      * CRM moram.
      */
     readonly countOpenByLead: (leadId: LeadId) => Effect.Effect<number>;
+    /**
+     * Quantos negócios **em aberto** cada responsável tem — o segundo número da
+     * tela de Vendedores.
+     *
+     * Mesma leitura de "em aberto" do `countOpenByLead`: resultado `OPEN`. Um
+     * negócio encerrado é história registrada e não é trabalho na mesa de
+     * ninguém, e um negócio removido não conta — a remoção lógica vale aqui como
+     * em toda leitura desta camada.
+     *
+     * Como o `countByOwner` do outro repositório, **não** resolve o `JOIN` com a
+     * tabela de Users nem filtra por papel: um `GROUP BY` sobre a tabela de
+     * negócios não produz a linha de quem não tem negócio, e é o caso de uso que
+     * junta as duas metades. Daí o `Map`: chave ausente é "nenhum negócio
+     * aberto".
+     */
+    readonly countOpenByOwner: () => Effect.Effect<ReadonlyMap<UserId, number>>;
   }
 >() {}
 
@@ -778,6 +794,23 @@ export const DealRepositoryInMemory = (
                     deal.result === 'OPEN',
                 ).length,
             ),
+          ),
+
+        countOpenByOwner: () =>
+          Ref.get(store).pipe(
+            Effect.map((deals) => {
+              // O `GROUP BY ownerId` do outro lado da seam, com os mesmos dois
+              // filtros do `where` do Prisma: removido não conta, encerrado
+              // também não.
+              const counts = new Map<UserId, number>();
+
+              for (const deal of deals) {
+                if (deal.deletedAt !== null || deal.result !== 'OPEN') continue;
+                counts.set(deal.ownerId, (counts.get(deal.ownerId) ?? 0) + 1);
+              }
+
+              return counts;
+            }),
           ),
 
         moveToStage: (id, move) =>

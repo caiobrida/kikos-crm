@@ -237,6 +237,27 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
           });
         }),
 
+      countByOwner: () =>
+        Effect.promise(() =>
+          /*
+           * O `GROUP BY` faz o trabalho no banco: o que atravessa a rede é uma
+           * linha por responsável, e não a carteira inteira para ser contada em
+           * memória. O filtro de remoção lógica vale aqui como em toda leitura
+           * desta camada — sem ele, a tela de Vendedores mostraria contatos que
+           * a lista de Leads não mostra.
+           */
+          prisma.lead.groupBy({
+            by: ['ownerId'],
+            where: { deletedAt: null },
+            _count: { _all: true },
+          }),
+        ).pipe(
+          Effect.map(
+            (rows) =>
+              new Map(rows.map((row) => [row.ownerId as UserId, row._count._all])),
+          ),
+        ),
+
       list: (query) =>
         Effect.promise(async () => {
           const where = whereFrom(query);
