@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm exec --workspace apps/api -- prisma generate && npm run build --workspace apps/web",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+}
