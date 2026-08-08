@@ -171,6 +171,64 @@ export const DEAL_CLOSE_REFUSALS: Record<DealCloseRefusal, string> = {
 
 /*
  * ---------------------------------------------------------------------------
+ * A edição
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Por que o CRM recusa editar um negócio.
+ *
+ * Uma recusa só, e o nome **é a tag do erro de domínio** correspondente, como nas
+ * duas regras acima.
+ */
+export type DealEditRefusal = 'DealAlreadyClosed';
+
+/**
+ * O CRM aceita editar um negócio que está neste estágio? Devolve o motivo da
+ * recusa, ou `undefined` quando a edição vale.
+ *
+ * A terceira irmã de `refuseStageMove` e `refuseDealClose`, e a mais curta —
+ * pelo mesmo motivo que as outras duas são curtas: **o estágio de origem basta**.
+ * Quem está em `CLOSED` já tem desfecho registrado (ADR-0003), e negócio
+ * encerrado é terminal para toda escrita: mover, encerrar de novo e editar falham
+ * juntas, e a lista das três está no ADR.
+ *
+ * Ela existe apesar de hoje concordar campo a campo com `refuseDealClose` — e o
+ * teste que fixa essa concordância é justamente onde a duplicação estaria, se
+ * fosse duplicação. O que separa as duas não é o valor de retorno: é a pergunta.
+ * O detalhamento chama esta para decidir se **oferece** o botão "Editar", e
+ * chama a outra para decidir se oferece "Ganho" e "Perdido" — e o dia em que a
+ * regra de uma mudar, a outra não muda junto por acidente.
+ *
+ * Os campos editados não entram na regra, pelo mesmo motivo que o desfecho
+ * pedido não entra em `refuseDealClose`: corrigir o valor de um negócio ganho não
+ * é "uma edição menor", é a mesma escrita recusada pelo mesmo motivo.
+ */
+export const refuseDealEdit = (from: DealStage): DealEditRefusal | undefined =>
+  from === 'CLOSED' ? 'DealAlreadyClosed' : undefined;
+
+/**
+ * O motivo da recusa em português, pronto para a tela.
+ *
+ * Distinta das outras duas apesar de a tag ser a mesma, e o critério é o de
+ * sempre: a frase responde ao que a pessoa acabou de tentar. Lá ela arrastou um
+ * card e quer saber por que ele voltou, ou clicou em "Ganho" e quer saber por que
+ * o desfecho não mudou; aqui ela clicou em "Editar" e quer saber por que o
+ * formulário não abriu.
+ *
+ * Como no encerramento, o detalhamento usa a regra para **não oferecer** o botão,
+ * e por isso esta frase só é lida quando o servidor recusa de verdade — a corrida
+ * em que outra pessoa encerrou o negócio enquanto o formulário estava aberto, e o
+ * 409 chega com este mesmo texto no corpo.
+ */
+export const DEAL_EDIT_REFUSALS: Record<DealEditRefusal, string> = {
+  DealAlreadyClosed:
+    'Este negócio já foi encerrado, e o que ficou registrado não se corrige. ' +
+    'Para registrar o que mudou, escreva um comentário na linha do tempo.',
+};
+
+/*
+ * ---------------------------------------------------------------------------
  * O gesto
  * ---------------------------------------------------------------------------
  */

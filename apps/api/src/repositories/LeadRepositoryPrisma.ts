@@ -2,7 +2,12 @@ import type { LeadId, LeadListQuery, LeadSortBy, SortOrder, UserId } from '@kiko
 import { Effect, Layer, Option } from 'effect';
 import type { Prisma } from '../generated/prisma/client';
 import { createPrismaClient } from '../prisma';
-import { LeadRepository, type LeadRecord, type LeadWithOwner } from './LeadRepository';
+import {
+  LeadRepository,
+  type LeadDetailWithOwner,
+  type LeadRecord,
+  type LeadWithOwner,
+} from './LeadRepository';
 import { escapeLikeWildcards } from './like';
 
 /*
@@ -64,6 +69,28 @@ const toLeadRecord = (row: LeadRecordRow): LeadRecord => ({
   // tipo marcado. A conferência de forma já foi feita pelo banco.
   id: row.id as LeadId,
   ownerId: row.ownerId as UserId,
+});
+
+/**
+ * O `SELECT` do detalhamento: o contato inteiro, com o responsável resolvido.
+ *
+ * A diferença para o da listagem são `jobTitle` e `notes` — as duas colunas que
+ * a tabela não desenha e que o formulário de edição precisa preencher. Um
+ * `SELECT` mais largo numa consulta que devolve uma linha só; a lista continua
+ * pagando o estreito, multiplicado por dez linhas.
+ */
+const DETAIL_SELECT = {
+  ...LIST_SELECT,
+  jobTitle: true,
+  notes: true,
+} satisfies Prisma.LeadSelect;
+
+type LeadDetailRow = Prisma.LeadGetPayload<{ select: typeof DETAIL_SELECT }>;
+
+const toLeadDetail = (row: LeadDetailRow): LeadDetailWithOwner => ({
+  ...row,
+  id: row.id as LeadId,
+  owner: { id: row.owner.id as UserId, name: row.owner.name },
 });
 
 /**
@@ -145,6 +172,52 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
             }),
           ).pipe(Option.map(toLeadRecord)),
         ),
+
+      detailById: (id) =>
+        Effect.promise(async () =>
+          Option.fromNullable(
+            // O filtro de remoção lógica mora aqui, como em toda leitura.
+            await prisma.lead.findFirst({
+              where: { id, deletedAt: null },
+              select: DETAIL_SELECT,
+            }),
+          ).pipe(Option.map(toLeadDetail)),
+        ),
+
+      update: (id, changes) =>
+        Effect.promise(async () => {
+          /*
+           * A cláusula de remoção entra no `where` do próprio `update`: o caso
+           * de uso já perguntou se o contato está lá, mas quem garante que ele
+           * continua lá no instante da escrita é o banco, e não a leitura de um
+           * instante atrás.
+           */
+          const row = await prisma.lead.update({
+            where: { id, deletedAt: null },
+            data: changes,
+            // O mesmo `select` da listagem: a linha volta pronta para a tabela.
+            select: LIST_SELECT,
+          });
+
+          return toLeadWithOwner(row);
+        }),
+
+      softDelete: (id, at) =>
+        Effect.promise(async () => {
+          /*
+           * `updateMany`, e não `delete`: a remoção é lógica. A linha continua
+           * no banco — os negócios dela apontam para ela —, e o que muda é que
+           * toda leitura desta camada deixa de enxergá-la.
+           *
+           * O `where` com `deletedAt: null` também torna a operação idempotente:
+           * remover duas vezes não sobrescreve a data da primeira, que é a que
+           * conta.
+           */
+          await prisma.lead.updateMany({
+            where: { id, deletedAt: null },
+            data: { deletedAt: at },
+          });
+        }),
 
       recordLeadInteraction: (id, interaction) =>
         Effect.promise(async () => {

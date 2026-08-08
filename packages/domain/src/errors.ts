@@ -121,6 +121,22 @@ export class DealAlreadyClosed extends Data.TaggedError('DealAlreadyClosed')<{
 }> {}
 
 /**
+ * O contato tem negócio em aberto, e removê-lo tiraria dinheiro do funil. → 409
+ *
+ * **409, e não 422**, pelo mesmo critério do `DealAlreadyClosed`: a operação
+ * existe e o pedido está bem formado — o que impede é o estado em que o registro
+ * está, e ele muda assim que os negócios forem encerrados ou removidos.
+ *
+ * A frase carrega **quantos** negócios travam a operação, escrita por
+ * `leadHasOpenDealsMessage` no domínio: o número é requisito do spec, e pô-lo na
+ * mensagem em vez de num campo à parte é o que mantém um formato só para todo
+ * erro da API.
+ */
+export class LeadHasOpenDeals extends Data.TaggedError('LeadHasOpenDeals')<{
+  readonly message: string;
+}> {}
+
+/**
  * A união de tudo que um programa de domínio pode falhar. Cresce a cada fatia,
  * e é ela que torna o mapa de erro para HTTP verificável pelo compilador.
  */
@@ -132,4 +148,5 @@ export type DomainError =
   | LeadNotFound
   | DealNotFound
   | InvalidStageTransition
-  | DealAlreadyClosed;
+  | DealAlreadyClosed
+  | LeadHasOpenDeals;

@@ -1,6 +1,11 @@
 import { describe, expect, it } from '@effect/vitest';
 import { Either, Schema } from 'effect';
-import { CloseDealInput, CreateDealInput, type CreateDealInputEncoded } from './deal';
+import {
+  CloseDealInput,
+  CreateDealInput,
+  UpdateDealInput,
+  type CreateDealInputEncoded,
+} from './deal';
 import { toValidationIssues } from './errors';
 
 /*
@@ -143,6 +148,65 @@ describe('CreateDealInput', () => {
 
       expect(fields).toEqual(expect.arrayContaining(['title', 'leadId', 'ownerId']));
     });
+  });
+});
+
+/*
+ * A carga de `PUT /deals/:id` — o cadastro menos o estágio.
+ *
+ * O que estes testes fixam é a fronteira: tudo que o cadastro oferece continua
+ * corrigível, e mover um card continua sendo outra ação, com outra rota e outras
+ * consequências.
+ */
+describe('UpdateDealInput', () => {
+  const edit = Schema.decodeUnknownEither(UpdateDealInput, { errors: 'all' });
+
+  it('aceita a carga do cadastro sem o estágio', () => {
+    const { stage: _stage, ...editable } = form({
+      expectedCloseDate: '2026-09-20',
+      description: 'Doze esteiras, com instalação.',
+    });
+
+    const deal = Either.getOrThrow(edit(editable));
+
+    expect(deal.title).toBe('Esteiras profissionais');
+    expect(deal.valueInCents).toBe(1_250_000);
+    expect(deal.leadId).toBe(LEAD_ID);
+    expect(deal.ownerId).toBe(OWNER_ID);
+    expect(deal.expectedCloseDate).toEqual(new Date('2026-09-20T00:00:00.000Z'));
+    expect(deal.description).toBe('Doze esteiras, com instalação.');
+  });
+
+  it('ignora o estágio que alguém mandar junto', () => {
+    /*
+     * Mover é `PATCH /deals/:id/stage`, e é lá que moram a regra do funil, o
+     * registro na linha do tempo e o selo do contato. Um estágio no corpo da
+     * edição não é recusado com estardalhaço — ele simplesmente não existe neste
+     * Schema, e por isso não tem como virar escrita.
+     */
+    expect(Either.getOrThrow(edit(form({ stage: 'CLOSED' })))).not.toHaveProperty(
+      'stage',
+    );
+  });
+
+  it('cobra os mesmos campos obrigatórios que o cadastro cobra', () => {
+    // Um negócio não fica sem título nem sem contato por ter sido salvo pela
+    // tela de edição: a regra é a mesma, derivada do mesmo Schema.
+    const { stage: _stage, ...editable } = form();
+
+    expect(Either.isLeft(edit({ ...editable, title: '   ' }))).toBe(true);
+    expect(Either.isLeft(edit({ ...editable, leadId: '' }))).toBe(true);
+    expect(Either.isLeft(edit({ ...editable, valueInCents: -1 }))).toBe(true);
+  });
+
+  it('volta à forma do formulário, que é como a tela abre a edição', () => {
+    const { stage: _stage, ...editable } = form({ expectedCloseDate: '2026-09-20' });
+
+    // O caminho de verdade: o negócio que veio do servidor é *codificado* para
+    // preencher os campos, e decodificado de volta ao salvar.
+    expect(Schema.encodeSync(UpdateDealInput)(Either.getOrThrow(edit(editable)))).toEqual(
+      editable,
+    );
   });
 });
 

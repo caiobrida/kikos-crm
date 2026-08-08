@@ -17,6 +17,7 @@ import {
 } from '../lib/deals';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useSellers } from '../lib/sellers';
+import { Alert } from '../ui/Alert';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Field';
 import { OwnerFilter } from '../ui/OwnerFilter';
@@ -268,12 +269,7 @@ export const DealsBoardPage = () => {
       </div>
 
       {board.isError ? (
-        <p
-          role="alert"
-          className="rounded-lg bg-lost-500/10 px-3 py-2 text-sm text-lost-300 ring-1 ring-lost-500/30"
-        >
-          Não foi possível carregar o funil. Tente de novo.
-        </p>
+        <Alert>Não foi possível carregar o funil. Tente de novo.</Alert>
       ) : null}
 
       {/*

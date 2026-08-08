@@ -1,4 +1,4 @@
-import type { LeadListItem } from '@kikos/domain';
+import type { LeadId, UserSummary } from '@kikos/domain';
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { cn } from '../lib/cn';
 import { useLeadSearch } from '../lib/leads';
@@ -21,11 +21,29 @@ import { Input } from './Field';
  * está em destaque sem tirar o foco do campo — que é o que faz as setas e o
  * Enter funcionarem para quem usa leitor de tela.
  */
+/**
+ * Um contato como este campo o trata: o que ele **mostra** e o que quem o usa
+ * precisa da escolha.
+ *
+ * São quatro dados, e nem uma linha da tabela nem o dossiê de um negócio inteiro
+ * — os dois cabem aqui, e é essa a razão do tipo. A busca devolve linhas da
+ * lista de Leads (`LeadListItem`); a edição de um negócio abre o campo já
+ * preenchido com o dossiê que veio no detalhamento (`LeadDossier`). Pedir um dos
+ * dois obrigaria o outro a ser remontado à mão só para caber na prop.
+ */
+export interface PickedLead {
+  readonly id: LeadId;
+  readonly name: string;
+  readonly company: string;
+  /** É dele que sai o vendedor pré-preenchido no cadastro de um negócio. */
+  readonly owner: UserSummary;
+}
+
 export interface LeadPickerProps {
   readonly id: string;
   /** O contato escolhido, ou `undefined` enquanto ninguém escolheu. */
-  readonly value: LeadListItem | undefined;
-  readonly onChange: (lead: LeadListItem | undefined) => void;
+  readonly value: PickedLead | undefined;
+  readonly onChange: (lead: PickedLead | undefined) => void;
   readonly invalid?: boolean;
 }
 
@@ -43,7 +61,7 @@ export const LeadPicker = ({ id, value, onChange, invalid }: LeadPickerProps) =>
 
   const isListVisible = isOpen && value === undefined;
 
-  const choose = (lead: LeadListItem) => {
+  const choose = (lead: PickedLead) => {
     onChange(lead);
     setIsOpen(false);
     setTerm('');

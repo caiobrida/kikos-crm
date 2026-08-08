@@ -188,6 +188,105 @@ export const CreateLeadInput = Schema.Struct({
 export type CreateLeadInput = typeof CreateLeadInput.Type;
 export type CreateLeadInputEncoded = typeof CreateLeadInput.Encoded;
 
+/*
+ * ---------------------------------------------------------------------------
+ * A edição
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * O contato inteiro — o que `GET /leads/:id` responde, e o que o modal do Lead
+ * desenha e preenche no formulário de edição.
+ *
+ * A diferença para a linha da tabela são os dois campos que a lista
+ * deliberadamente não carrega — `jobTitle` e `notes` —, e é justamente por eles
+ * que esta consulta existe: sem ela, abrir a edição de um contato ofereceria um
+ * formulário com dois campos em branco que não estão em branco no banco, e salvar
+ * apagaria o que alguém escreveu.
+ *
+ * `status` e `lastInteractionAt` vêm junto mesmo não sendo editáveis: o modal os
+ * **mostra** — o selo e a data são o que dizem em que pé está o relacionamento —,
+ * e quem os escreve continua sendo o domínio, nas ações de Deal.
+ *
+ * Como nos outros Schemas, `deletedAt` não está aqui: remoção lógica é assunto do
+ * repositório, e um campo que não existe no Schema não vaza num `GET` distraído.
+ */
+export const LeadDetail = Schema.Struct({
+  id: LeadId,
+  name: Schema.String,
+  company: Schema.String,
+  email: Email,
+  phone: Schema.String,
+  /** `NullOr` e não opcional: a coluna é nulável, e a tela desenha a ausência. */
+  jobTitle: Schema.NullOr(Schema.String),
+  source: LeadSource,
+  status: LeadStatus,
+  notes: Schema.NullOr(Schema.String),
+  owner: UserSummary,
+  /** `Schema.DateFromString`: string ISO no JSON, `Date` no código. */
+  lastInteractionAt: Schema.DateFromString,
+});
+
+export type LeadDetail = typeof LeadDetail.Type;
+export type LeadDetailEncoded = typeof LeadDetail.Encoded;
+
+/**
+ * O corpo de `PUT /leads/:id` — **o mesmo objeto que o cadastro**.
+ *
+ * O alias não é preguiça: é a decisão. Editar um contato é preencher o cadastro
+ * de novo com os valores que já estavam lá, e todo campo que alguém escolheu ao
+ * cadastrar continua sendo dele para corrigir. Um Schema separado com os "campos
+ * editáveis" seria um segundo vocabulário capaz de divergir do primeiro — e a
+ * divergência apareceria como um formulário que aceita o que a rota recusa.
+ *
+ * Por isso `PUT` recebe a carga **completa**, e não um punhado de campos
+ * mexidos: a requisição inteira é validada por um Schema só, o formulário de
+ * cadastro é reusado tal como está, e não existe um estado intermediário em que
+ * metade do contato foi salva.
+ *
+ * O que fica de fora fica pelo mesmo motivo de sempre: `status` e
+ * `lastInteractionAt` são decididos pelo domínio — o selo pelas ações de Deal, a
+ * data pelos acontecimentos que o spec lista —, e corrigir um telefone não é
+ * nenhum dos dois. Um campo que não existe no Schema não tem como ser escolhido
+ * pelo corpo da requisição.
+ *
+ * O nome existe apesar de o valor ser o mesmo porque a rota e a tela falam de
+ * edição, não de cadastro: `UpdateLeadInput` é o que se procura ao ler `PUT
+ * /leads/:id`, e o dia em que a edição precisar recusar algo que o cadastro
+ * aceita, o lugar de escrever isso já tem nome.
+ */
+export const UpdateLeadInput = CreateLeadInput;
+
+export type UpdateLeadInput = typeof UpdateLeadInput.Type;
+export type UpdateLeadInputEncoded = typeof UpdateLeadInput.Encoded;
+
+/*
+ * ---------------------------------------------------------------------------
+ * A remoção
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Por que um contato com negócio em aberto não pode ser removido, com o número
+ * que trava a operação.
+ *
+ * Mora aqui junto do domínio, e não solta na rota, pelo mesmo motivo que
+ * `STAGE_MOVE_REFUSALS` e `DEAL_CLOSE_REFUSALS` moram no Pipeline: é uma frase
+ * que explica uma regra, e ela é lida pela tela exatamente como o servidor a
+ * escreveu.
+ *
+ * **A contagem entra na frase, e não num campo à parte do corpo de erro.** É o
+ * que mantém um formato só para todo erro da API — tag, mensagem e, quando é
+ * queixa de campo, a lista de campos — em vez de um campo extra que só um erro
+ * usa e que toda tela teria de saber procurar. O requisito do spec é que quem
+ * tentou remover saiba *quantos* negócios travam; a frase responde isso.
+ */
+export const leadHasOpenDealsMessage = (openDeals: number): string =>
+  `Este contato tem ${String(openDeals)} ` +
+  `${openDeals === 1 ? 'negócio em aberto' : 'negócios em aberto'} e não pode ser ` +
+  'removido. Encerre ou remova esses negócios primeiro — o funil não perde ' +
+  'oportunidade porque alguém limpou a lista de contatos.';
+
 /**
  * O status que o Lead assume quando um Deal nasce para ele.
  *

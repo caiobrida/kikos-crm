@@ -2,8 +2,7 @@ import { Comment, CreateCommentInput, DealTimeline } from '@kikos/domain';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Schema } from 'effect';
 import { apiJson } from './api';
-import { dealsQueryKey } from './deals';
-import { leadsQueryKey } from './leads';
+import { dealsQueryKey, leadsQueryKey } from './queryKeys';
 
 /*
  * A linha do tempo de um negócio.

@@ -16,6 +16,19 @@ import { ApiError } from './api';
 /** O que a rede devolve quando nem chegou a haver resposta para ler. */
 const UNREACHABLE = 'Não foi possível falar com o servidor. Tente de novo.';
 
+/**
+ * Os nomes dos campos de um formulário, tirados do **Schema** que o valida.
+ *
+ * `CreateLeadInput.fields` é o objeto de campos do Schema, e as chaves dele são
+ * exatamente os campos que o formulário desenha. Derivá-los daí, em vez de
+ * escrever a lista à mão ou tirá-la do objeto de valores iniciais, é o que faz
+ * um campo novo no domínio entrar na conta sozinho — e é essa lista que decide
+ * se uma recusa da API pertence a um campo ou ao aviso do topo.
+ */
+export const fieldsOf = <Fields extends object>(
+  fields: Fields,
+): readonly (keyof Fields & string)[] => Object.keys(fields) as (keyof Fields & string)[];
+
 /** As queixas por campo que a API devolveu, ou nenhuma. */
 const issuesOf = (error: unknown): readonly ValidationIssue[] =>
   error instanceof ApiError ? error.issues : [];
