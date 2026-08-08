@@ -8,17 +8,17 @@ do board.
 
 **Blocked by:** 09
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Branch:** `feat/dashboard`
 
-- [ ] Os números dos gráficos batem com o board e com a lista de Leads
-- [ ] Um negócio removido some dos gráficos e da tabela
-- [ ] Encerrar um negócio como ganho move o número entre os gráficos
-- [ ] A tabela busca, ordena e pagina pelo servidor
-- [ ] Abrir um negócio pela tabela leva ao mesmo modal do board
-- [ ] Os gráficos são legíveis no tema escuro e têm rótulos claros
-- [ ] O Dashboard deixa de ser inerte na barra lateral e vira a tela inicial após o login
+- [x] Os números dos gráficos batem com o board e com a lista de Leads
+- [x] Um negócio removido some dos gráficos e da tabela
+- [x] Encerrar um negócio como ganho move o número entre os gráficos
+- [x] A tabela busca, ordena e pagina pelo servidor
+- [x] Abrir um negócio pela tabela leva ao mesmo modal do board
+- [x] Os gráficos são legíveis no tema escuro e têm rótulos claros
+- [x] O Dashboard deixa de ser inerte na barra lateral e vira a tela inicial após o login
 
 ## Decisões que valem lembrar
 
