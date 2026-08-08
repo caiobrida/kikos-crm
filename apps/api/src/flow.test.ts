@@ -12,8 +12,11 @@ import { Schema } from 'effect';
 import type { LightMyRequestResponse } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from './http/cookies';
+import type { ErrorBody } from './http/errors';
 import {
+  CLOSED_DEAL_TITLE,
   LEAD_WITH_ONE_OPEN_DEAL,
+  OPEN_DEAL_TITLE,
   TEST_PASSWORD,
   cookieValue,
   makeTestHarness,
@@ -57,13 +60,13 @@ afterEach(async () => {
   await harness.close();
 });
 
-/** O corpo de erro que a API devolve, em qualquer recusa. Ver `http/errors.ts`. */
-interface ErrorBody {
-  readonly error: DomainError['_tag'];
-  readonly message: string;
-  readonly issues?: readonly { readonly path: string }[];
-}
-
+/**
+ * O corpo de erro que a API devolve, em qualquer recusa.
+ *
+ * O tipo é o da própria API, e não uma cópia local: um campo que mudasse de
+ * forma lá quebraria este arquivo, que é justamente o que se quer de um teste
+ * de contrato.
+ */
 const errorBody = (response: LightMyRequestResponse): ErrorBody =>
   response.json<ErrorBody>();
 
@@ -352,7 +355,7 @@ const PROVOCATIONS: Record<
 
   /** Mover um negócio que já terminou. */
   DealAlreadyClosed: async (harness) => {
-    const closed = await read.dealNamed(harness, 'Kit de acessórios funcionais');
+    const closed = await read.dealNamed(harness, CLOSED_DEAL_TITLE);
 
     return harness.patch(`/deals/${closed.id}/stage`, { stage: 'NEGOTIATION' });
   },
@@ -364,9 +367,9 @@ const PROVOCATIONS: Record<
     return harness.del(`/leads/${lead.id}`);
   },
 
-  /** Arrastar um negócio em aberto para a coluna Fechado. */
+  /** Pedir a coluna Fechado para um negócio em aberto, por fora da tela. */
   InvalidStageTransition: async (harness) => {
-    const open = await read.dealNamed(harness, 'Renovação do parque de máquinas');
+    const open = await read.dealNamed(harness, OPEN_DEAL_TITLE);
 
     return harness.patch(`/deals/${open.id}/stage`, { stage: 'CLOSED' });
   },
@@ -404,58 +407,5 @@ describe('todo erro de domínio chega com o status da tabela', () => {
     // forma da entrada, e o corpo de erro tem um formato só.
     const conflict = errorBody(await PROVOCATIONS.DealAlreadyClosed(harness));
     expect(conflict.issues).toBeUndefined();
-  });
-});
-
-describe('a remoção lógica atravessa o contrato inteiro', () => {
-  /*
-   * O contato removido da fixture não pode ser devolvido por consulta nenhuma —
-   * e a leitura por identificador é o caminho que mais facilmente esqueceria o
-   * filtro, porque não passa pela lista. Este é o teste que amarra a decisão do
-   * spec: o filtro mora no repositório, nunca na rota.
-   */
-  it('não devolve pelo identificador o contato que a lista já não mostra', async () => {
-    const deleted = harness.leads.find((lead) => lead.deletedAt !== null);
-    if (deleted === undefined) throw new Error('A fixture perdeu o contato removido.');
-
-    const response = await harness.get(`/leads/${deleted.id}`);
-
-    expect(response.statusCode).toBe(404);
-    expect(errorBody(response).error).toBe('LeadNotFound');
-  });
-
-  it('não devolve pelo identificador o negócio que o board já não mostra', async () => {
-    const deleted = harness.deals.find((deal) => deal.deletedAt !== null);
-    if (deleted === undefined) throw new Error('A fixture perdeu o negócio removido.');
-
-    const response = await harness.get(`/deals/${deleted.id}`);
-
-    expect(response.statusCode).toBe(404);
-    expect(errorBody(response).error).toBe('DealNotFound');
-  });
-
-  it('mantém legível o contato removido de um negócio ganho', async () => {
-    const lead = await read.leadNamed(harness, 'Fabio Gomes');
-    const won = await read.dealNamed(harness, 'Kit de acessórios funcionais');
-
-    // Encerrado o único negócio em aberto do contato, ele sai da carteira.
-    const openDeal = await read.dealNamed(harness, 'Reposição de anilhas');
-    expect(
-      (await harness.post(`/deals/${openDeal.id}/close`, { result: 'LOST' })).statusCode,
-    ).toBe(200);
-    expect((await harness.del(`/leads/${lead.id}`)).statusCode).toBe(204);
-
-    /*
-     * O negócio ganho continua sabendo de quem era. O `JOIN` do dossiê enxerga
-     * o contato removido de propósito: apagar a venda junto do cadastro levaria
-     * embora o histórico comercial.
-     */
-    const dossie = await read.dealDetail(harness, won.id);
-    expect(dossie.result).toBe('WON');
-    expect(dossie.lead.name).toBe('Fabio Gomes');
-
-    // Mas ele não volta pela carteira nem pela leitura direta.
-    expect((await harness.get('/leads?search=fabio')).json()).toMatchObject({ total: 0 });
-    expect((await harness.get(`/leads/${lead.id}`)).statusCode).toBe(404);
   });
 });

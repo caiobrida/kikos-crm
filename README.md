@@ -430,7 +430,8 @@ O que se paga está registrado em [ADR-0002](./docs/adr/0002-effect-in-domain-fa
 teria de ser um serviço acima dos repositórios, e seria justamente a peça que a Layer em memória
 não saberia satisfazer sem virar um banco de mentira. O pior caso é o `status` do Lead ficar um
 passo atrás do Deal; como a regra é "último evento vence" e não um acumulador, a ação seguinte
-corrige.
+corrige — **exceto no encerramento**, que é a última ação daquele negócio e por isso não tem
+seguinte. É o custo conhecido, e ele foi aceito para manter os testes de rota sem Postgres.
 
 ### Prisma atrás de serviços Effect
 
@@ -480,13 +481,20 @@ A regra que decide tudo isso é uma função pura de cinco linhas no pacote comp
 (`refuseStageMove`, em `packages/domain/src/pipeline.ts`), e é o argumento mais concreto a favor
 do pacote:
 
-**As duas pontas chamam esta mesma função.** No navegador, a coluna do board a consulta durante o
-arrasto: quando ela recusa, a coluna não chama `preventDefault` no `dragover` — e no
-arrasta-e-solta nativo isso significa que o drop **não acontece**. A recusa não é um `if` dentro
-do drop; é a ausência do drop, e nenhuma requisição chega a ser montada. No servidor, a rota a
-consulta antes de escrever, para quem enviar por fora da tela. E a frase que explica cada recusa
-mora ao lado da regra (`STAGE_MOVE_REFUSALS`), então o aviso que aparece no board é, literalmente,
-o mesmo texto que a API devolveria.
+**As duas pontas chamam esta mesma função.** No navegador ela é lida através de `stageDrop`, que
+traduz a regra no que o **gesto** significa: mover, encerrar, ou recusar. A coluna só chama
+`preventDefault` no `dragover` quando o gesto é aceito — e no arrasta-e-solta nativo não chamar
+significa que o drop **não acontece**. A recusa não é um `if` dentro do drop; é a ausência do drop.
+No servidor, a rota consulta a regra crua antes de escrever, para quem enviar por fora da tela. E a
+frase que explica cada recusa mora ao lado da regra (`STAGE_MOVE_REFUSALS`), então o aviso do board
+é, literalmente, o mesmo texto que a API devolveria.
+
+Vale ser preciso sobre uma coisa que mudou de forma no caminho: **a coluna Fechado aceita o drop.**
+`refuseStageMove` recusa aquele destino com `InvalidStageTransition`, mas `stageDrop` lê essa
+recusa como `close` — soltar ali é justamente o gesto que abre a escolha entre Ganho e Perdido. E
+como um card encerrado nasce com `draggable={false}`, a outra recusa (`DealAlreadyClosed`) também
+não chega a acontecer por arrasto. Na prática o 422 e o 409 desta regra são respostas para quem
+chama a API por fora da tela — que é onde o teste de fluxo os exercita.
 
 Mover é também a **única escrita otimista do CRM**. O card muda de coluna no instante do gesto,
 antes da resposta; se o servidor recusar, o cache volta ao retrato de antes e o card retorna à
@@ -535,10 +543,11 @@ rejeitada por decisão explícita de demonstrar o padrão completo.
 
 ### Consulta sempre no servidor
 
-Busca, filtro, ordenação e paginação acontecem no banco, sem exceção. Existe **um** `filter`
-sobre dados em tela em todo o app, e ele não é consulta: é a previsão otimista do card arrastado.
-As listagens respondem `{ data, page, pageSize, total }`, e é o `total` que alimenta o contador —
-ele descreve o recorte inteiro, não as linhas que couberam na página.
+Busca, filtro, ordenação e paginação acontecem no banco, sem exceção. O app web recorta dados em
+tela num arquivo só — `apps/web/src/lib/board.ts` —, e o que ele faz ali não é consulta: é a
+previsão otimista do card arrastado, desfeita assim que o servidor responde. As listagens respondem
+`{ data, page, pageSize, total }`, e é o `total` que alimenta o contador — ele descreve o recorte
+inteiro, não as linhas que couberam na página.
 
 Duas consequências que valem registrar:
 

@@ -25,5 +25,9 @@ como ganho ou perdido, e uma vez fechado o Deal é terminal.
   ao histórico sem mudar o desfecho, a outra retira o negócio sem reescrevê-lo.
 - O estado `stage = CLOSED, result = OPEN` é inalcançável, então a coluna Fechado sempre sabe
   pintar cada card de verde ou vermelho.
-- A regra de transição é uma função pura no pacote compartilhado, então o frontend recusa o
-  drop inválido com a mesma lógica que o backend usa para rejeitá-lo.
+- A regra de transição é uma função pura no pacote compartilhado, e as duas pontas a leem. O
+  frontend a lê através de `stageDrop`, que traduz a regra no significado do **gesto**: a recusa de
+  `CLOSED` vira a escolha entre Ganho e Perdido, e não um drop bloqueado. Somar isso a um card
+  encerrado que nasce sem `draggable` deixa `InvalidStageTransition` e `DealAlreadyClosed`
+  inalcançáveis por arrasto — eles respondem a quem chama a API por fora da tela, e é lá que o
+  teste de fluxo os exercita.
