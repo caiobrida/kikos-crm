@@ -11,6 +11,7 @@ import { cn } from '../lib/cn';
 import {
   INITIAL_BOARD_VIEW,
   boardViewKey,
+  dealCountLabel,
   useBoard,
   useMoveDealStage,
   type BoardView,
@@ -65,11 +66,6 @@ import { DealPanel, PANEL_CLEARANCE } from './DealPanel';
  *   para um colega. É a rota do negócio que renderiza este board com o modal
  *   por cima — e é por isso que esta tela responde por dois caminhos.
  */
-
-const countLabel = (total: number): string => {
-  if (total === 0) return 'Nenhum negócio';
-  return total === 1 ? '1 negócio' : `${total} negócios`;
-};
 
 /** O que a recusa do servidor tem a dizer para quem arrastou o card. */
 const moveFailure = (error: unknown): string =>
@@ -195,7 +191,7 @@ export const DealsBoardPage = () => {
           <p className="mt-1 text-sm text-ink-muted">
             {total === undefined
               ? 'Carregando o funil…'
-              : `${countLabel(total)} no recorte atual.`}
+              : `${dealCountLabel(total)} no recorte atual.`}
           </p>
         </div>
 

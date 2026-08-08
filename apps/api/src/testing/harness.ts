@@ -336,6 +336,36 @@ export const VISIBLE_DEAL_COUNT = visibleDeals.length;
 export const dealsInStage = (stage: DealStage): number =>
   visibleDeals.filter((fixture) => fixture.stage === stage).length;
 
+/**
+ * O valor somado dos negócios visíveis de uma coluna — a barra do dashboard.
+ *
+ * Derivado da fixture como as contagens, e não escrito à mão: acrescentar um
+ * negócio à carteira de exemplo não deixa uma asserção de soma para trás.
+ */
+export const valueInStage = (stage: DealStage): number =>
+  visibleDeals
+    .filter((fixture) => fixture.stage === stage)
+    .reduce((sum, fixture) => sum + fixture.valueInCents, 0);
+
+/** Os negócios visíveis que um responsável encerrou com este desfecho. */
+const closedDealsOf = (owner: 'manager' | 'seller', result: DealResult) =>
+  visibleDeals.filter(
+    (fixture) => fixture.owner === owner && (fixture.result ?? 'OPEN') === result,
+  );
+
+/** Quantos negócios um responsável ganhou ou perdeu — a barra do vendedor. */
+export const closedDealsOwnedBy = (
+  owner: 'manager' | 'seller',
+  result: DealResult,
+): number => closedDealsOf(owner, result).length;
+
+/** O valor somado desses negócios. */
+export const closedValueOwnedBy = (
+  owner: 'manager' | 'seller',
+  result: DealResult,
+): number =>
+  closedDealsOf(owner, result).reduce((sum, fixture) => sum + fixture.valueInCents, 0);
+
 /** Quantos negócios visíveis são de um dos dois responsáveis. */
 export const dealsOwnedBy = (owner: 'manager' | 'seller'): number =>
   visibleDeals.filter((fixture) => fixture.owner === owner).length;

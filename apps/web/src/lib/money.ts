@@ -18,6 +18,32 @@ const BRL = new Intl.NumberFormat('pt-BR', {
  */
 export const formatBRL = (valueInCents: number): string => BRL.format(valueInCents / 100);
 
+/*
+ * O mesmo valor abreviado — "R$ 12,5 mil", "R$ 1,6 mi".
+ *
+ * Existe para o eixo de um gráfico, que é o lugar em que o valor por extenso não
+ * cabe: seis marcas de "R$ 12.500.000,00" empilhadas viram uma parede de dígitos
+ * que ninguém lê, e encolher a fonte até caber é trocar um problema por outro.
+ *
+ * `notation: 'compact'` é do próprio `Intl`, então "mil" e "mi" saem do
+ * português e não de uma tabela escrita aqui. Uma casa decimal, e não duas:
+ * a segunda não muda decisão nenhuma numa marca de eixo, e é onde a abreviação
+ * começa a parecer precisão que ela não tem.
+ *
+ * **Ele nunca substitui o valor exato**: o número por extenso continua no balão
+ * do hover e na tabela de negócios. Abreviar é para orientar a leitura da
+ * escala, não para esconder o dado.
+ */
+const BRL_COMPACT = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+export const compactBRL = (valueInCents: number): string =>
+  BRL_COMPACT.format(valueInCents / 100);
+
 /**
  * A gramática do valor em português: milhar separado por ponto, centavos por
  * vírgula.

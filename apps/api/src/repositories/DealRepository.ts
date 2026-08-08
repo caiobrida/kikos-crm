@@ -8,10 +8,12 @@ import {
   type DealResult,
   type DealSortBy,
   type DealStage,
+  type DealTally,
   type LeadDossier,
   type LeadId,
   type LeadSummary,
   type SortOrder,
+  type StageTally,
   type UserId,
   type UserSummary,
 } from '@kikos/domain';
@@ -166,6 +168,39 @@ export interface DealColumn {
 }
 
 /**
+ * O que um responsável fechou, como a agregação o devolve: por identificador, e
+ * não com o nome resolvido.
+ *
+ * O `JOIN` com a tabela de Users **não** acontece aqui, ao contrário do card do
+ * board. Não é economia de consulta: é que o gráfico mostra o time inteiro,
+ * inclusive quem não fechou negócio nenhum, e um `GROUP BY` sobre a tabela de
+ * negócios não tem como produzir a linha de quem não tem negócio. Quem junta as
+ * duas metades é o caso de uso, que já sabe pedir o time — e é lá, acima da
+ * seam, que a decisão fica testável.
+ */
+export interface OwnerResultTally extends DealTally {
+  readonly ownerId: UserId;
+  /** Só os dois resultados que encerram: em aberto não fecha nada. */
+  readonly result: ClosedDealResult;
+}
+
+/**
+ * O funil contado e somado pelas duas dimensões de ADR-0003, **numa leitura só**.
+ *
+ * As duas metades vêm juntas de propósito: elas descrevem o mesmo negócio por
+ * dois lados — a coluna em que ele está e o resultado com que terminou —, e os
+ * dois gráficos do dashboard não podem se contradizer. Duas consultas separadas
+ * poderiam pegar o banco em instantes diferentes e mostrar um negócio encerrado
+ * que ainda não foi ganho por ninguém.
+ */
+export interface DashboardTallies {
+  /** As cinco colunas, na ordem de `DEAL_STAGES`, inclusive as vazias. */
+  readonly byStage: readonly StageTally[];
+  /** Uma linha por par (responsável, resultado) que existe no banco. */
+  readonly byOwner: readonly OwnerResultTally[];
+}
+
+/**
  * O recorte de uma coluna do board, **escrito na forma da listagem paginada**.
  *
  * É daqui que sai a garantia mais importante desta fatia: o board não tem
@@ -202,6 +237,20 @@ export class DealRepository extends Context.Tag('DealRepository')<
     readonly list: (query: DealListQuery) => Effect.Effect<Slice<DealWithRelations>>;
     /** As cinco colunas do board, cada uma com a primeira página e o total. */
     readonly board: (query: DealBoardQuery) => Effect.Effect<readonly DealColumn[]>;
+    /**
+     * O funil contado e somado — o que os dois gráficos do dashboard leem.
+     *
+     * **A agregação acontece no banco**, e não sobre uma lista trazida para a
+     * memória: somar o funil inteiro no processo custaria uma leitura de toda a
+     * tabela para produzir dez números, e o custo cresceria com a base
+     * exatamente na tela que o gestor abre primeiro.
+     *
+     * Sem recorte: o dashboard é o panorama do funil inteiro, e busca e filtro
+     * são assunto da tabela abaixo dos gráficos — que reusa `list`. O único
+     * filtro é o de sempre, o da remoção lógica, que vale aqui como em toda
+     * leitura desta camada.
+     */
+    readonly tally: () => Effect.Effect<DashboardTallies>;
     /**
      * O negócio, ou `Option.none()` — inclusive quando ele existe mas foi
      * removido. É o que responde "esse card ainda está aí, e em que coluna?"
@@ -343,6 +392,21 @@ const compareBy = (
       return (a, b) => a.lastInteractionAt.getTime() - b.lastInteractionAt.getTime();
   }
 };
+
+/**
+ * Uma coluna contada e somada — o `_count` e o `_sum` do `GROUP BY`, escritos
+ * em TypeScript.
+ *
+ * A soma em centavos inteiros é exata, e é por isso que ela pode ser feita com
+ * um `reduce` comum: a coluna do banco é `Int`, não `Decimal` nem ponto
+ * flutuante, justamente para que somar o funil não acumule centavo de erro (ver
+ * `money.ts` no pacote de domínio).
+ */
+const tallyOf = (stage: DealStage, deals: readonly DealRecord[]): StageTally => ({
+  stage,
+  count: deals.length,
+  valueInCents: deals.reduce((sum, deal) => sum + deal.valueInCents, 0),
+});
 
 /** Os Leads como o `JOIN` do card os enxerga: identificador, nome e empresa. */
 const summarize = (leads: readonly LeadRecord[]): ReadonlyMap<LeadId, LeadSummary> =>
@@ -571,6 +635,53 @@ export const DealRepositoryInMemory = (
                 return { stage, total: slice.total, deals: slice.data };
               }),
             ),
+          ),
+
+        tally: () =>
+          Ref.get(store).pipe(
+            Effect.map((deals) => {
+              // O filtro de remoção lógica vem primeiro e não é opcional, como
+              // em toda leitura desta camada.
+              const visible = deals.filter((deal) => deal.deletedAt === null);
+
+              /*
+               * As cinco colunas, e não só as que têm negócio: o `GROUP BY` do
+               * Prisma omite a coluna vazia, e é aqui — e lá — que ela volta,
+               * porque um estágio sem negócio nenhum também é informação sobre
+               * o funil.
+               */
+              const byStage = DEAL_STAGES.map((stage) =>
+                tallyOf(
+                  stage,
+                  visible.filter((deal) => deal.stage === stage),
+                ),
+              );
+
+              /*
+               * O `GROUP BY (ownerId, result)` do outro lado da seam, escrito
+               * como acumulação num `Map`. A chave junta os dois campos porque
+               * é por eles que a agregação agrupa; `result === 'OPEN'` fica de
+               * fora, como o `where` do Prisma o deixa: quem está em aberto já
+               * está contado no funil acima.
+               */
+              const byOwner = new Map<string, OwnerResultTally>();
+
+              for (const deal of visible) {
+                if (deal.result === 'OPEN') continue;
+
+                const key = `${deal.ownerId}:${deal.result}`;
+                const current = byOwner.get(key);
+
+                byOwner.set(key, {
+                  ownerId: deal.ownerId,
+                  result: deal.result,
+                  count: (current?.count ?? 0) + 1,
+                  valueInCents: (current?.valueInCents ?? 0) + deal.valueInCents,
+                });
+              }
+
+              return { byStage, byOwner: [...byOwner.values()] };
+            }),
           ),
 
         create: (deal) =>
