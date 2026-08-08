@@ -1,11 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShell } from './layout/AppShell';
-import { ComingSoonPage } from './pages/ComingSoonPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DealsBoardPage } from './pages/DealsBoardPage';
 import { LeadsPage } from './pages/LeadsPage';
 import { LoginPage } from './pages/LoginPage';
 import { PrimitivesPage } from './pages/PrimitivesPage';
+import { SellersPage } from './pages/SellersPage';
 import { RequireAuth } from './routes/RequireAuth';
 
 /*
@@ -45,15 +45,7 @@ export const App = () => (
         */}
         <Route path="/negocios/:dealId" element={<DealsBoardPage />} />
 
-        <Route
-          path="/vendedores"
-          element={
-            <ComingSoonPage
-              title="Vendedores"
-              description="Quem pode receber Leads e Negócios, com avatar, nome e e-mail."
-            />
-          }
-        />
+        <Route path="/vendedores" element={<SellersPage />} />
 
         {/* A vitrine da fatia 01. Fora da barra lateral: é referência de
             desenvolvimento, não tela do produto. */}

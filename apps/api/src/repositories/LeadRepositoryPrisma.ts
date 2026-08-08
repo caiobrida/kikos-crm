@@ -9,6 +9,7 @@ import {
   type LeadWithOwner,
 } from './LeadRepository';
 import { escapeLikeWildcards } from './like';
+import { toOwnerCounts } from './ownerCounts';
 
 /*
  * A implementação sobre Prisma.
@@ -236,6 +237,22 @@ export const LeadRepositoryPrisma: Layer.Layer<LeadRepository> = Layer.scoped(
             },
           });
         }),
+
+      countByOwner: () =>
+        Effect.promise(() =>
+          /*
+           * O `GROUP BY` faz o trabalho no banco: o que atravessa a rede é uma
+           * linha por responsável, e não a carteira inteira para ser contada em
+           * memória. O filtro de remoção lógica vale aqui como em toda leitura
+           * desta camada — sem ele, a tela de Vendedores mostraria contatos que
+           * a lista de Leads não mostra.
+           */
+          prisma.lead.groupBy({
+            by: ['ownerId'],
+            where: { deletedAt: null },
+            _count: { _all: true },
+          }),
+        ).pipe(Effect.map(toOwnerCounts)),
 
       list: (query) =>
         Effect.promise(async () => {

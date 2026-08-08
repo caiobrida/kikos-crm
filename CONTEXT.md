@@ -25,6 +25,12 @@ _Avoid_: Vendedor como entidade separada de User
 O User a quem um Lead ou um Deal está atribuído. Todo Lead e todo Deal têm exatamente um Owner.
 _Avoid_: Assignee, Responsável, Dono
 
+**Workload (Carga)**:
+Quantos Leads e quantos Deals em aberto estão sob responsabilidade de um User — os dois números
+que a tela "Vendedores" mostra ao lado de cada pessoa. É contagem derivada, nunca coluna: ninguém
+escreve uma carga, ela é o que sobra de contar por Owner.
+_Avoid_: Carteira (em nomes de código), Capacidade, Meta
+
 ### Comercial
 
 **Lead**:

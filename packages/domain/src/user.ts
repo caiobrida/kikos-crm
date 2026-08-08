@@ -56,10 +56,12 @@ export const UserSummary = Schema.Struct({
 export type UserSummary = typeof UserSummary.Type;
 
 /**
- * O recorte pedido a `GET /users`.
+ * O recorte pedido a `GET /users` — e a `GET /users/workload`, que é a mesma
+ * lista com as contagens da tela de Vendedores.
  *
- * `?role=SELLER` é o que alimenta o filtro de vendedor da lista de Leads e, mais
- * adiante, a tela de Vendedores. Sem o parâmetro a rota devolve o time inteiro.
+ * `?role=SELLER` é o que alimenta o filtro de vendedor da lista de Leads, os
+ * `<select>` dos formulários e a tela de Vendedores. Sem o parâmetro as duas
+ * rotas devolvem o time inteiro.
  */
 export const UserListQuery = Schema.Struct({
   role: Schema.optional(UserRole),
@@ -70,3 +72,44 @@ export type UserListQuery = typeof UserListQuery.Type;
 /** O corpo de `GET /users`: o time em ordem alfabética. */
 export const UserList = Schema.Array(SessionUser);
 export type UserList = typeof UserList.Type;
+
+/**
+ * Uma pessoa do time com a carga que ela carrega — o que a tela de Vendedores
+ * desenha em cada linha.
+ *
+ * As duas contagens são **por Owner**, e a distinção é a do CONTEXT.md: a lista
+ * é de Users (recortada por `role`, porque a tela se chama Vendedores), e o que
+ * se conta é o que está atribuído a cada um. Um gestor que receba contato
+ * aparece com a carga dele se a consulta não filtrar papel — `role` é rótulo,
+ * não regra de acesso (ADR-0001).
+ *
+ * **Vem o time inteiro do recorte**, e não só quem tem alguma coisa. É a mesma
+ * decisão do `OwnerTally` do dashboard, pelo primeiro dos motivos de lá: quem
+ * está sem contato nenhum é justamente o que uma tela de carga precisa mostrar
+ * — uma linha zerada é uma resposta, uma linha ausente é um silêncio.
+ *
+ * Contato e negócio removidos não entram em nenhuma das duas: a remoção é lógica
+ * e o filtro mora na camada de repositório, como em toda leitura do CRM. É o que
+ * faz estes números baterem com o que a lista de Leads e o board mostram quando
+ * alguém filtra por essa mesma pessoa.
+ */
+export const UserWorkload = Schema.Struct({
+  /** A mesma projeção de `GET /users`: sem hash de senha e sem `tokenVersion`. */
+  user: SessionUser,
+  /** Quantos Leads são dele — o tamanho da carteira. */
+  leadCount: Schema.Int,
+  /**
+   * Quantos Deals **em aberto** são dele.
+   *
+   * Em aberto quer dizer resultado `OPEN`, e não estágio: um negócio encerrado é
+   * história registrada e não é trabalho na mesa de ninguém (ADR-0003). É a
+   * mesma leitura de "em aberto" que trava a remoção de um contato.
+   */
+  openDealCount: Schema.Int,
+});
+
+export type UserWorkload = typeof UserWorkload.Type;
+
+/** O corpo de `GET /users/workload`: o time em ordem alfabética, como `/users`. */
+export const UserWorkloadList = Schema.Array(UserWorkload);
+export type UserWorkloadList = typeof UserWorkloadList.Type;

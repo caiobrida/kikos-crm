@@ -20,6 +20,7 @@ import {
   type DealWithRelations,
 } from './DealRepository';
 import { escapeLikeWildcards } from './like';
+import { toOwnerCounts } from './ownerCounts';
 
 /*
  * A implementação sobre Prisma.
@@ -348,6 +349,22 @@ export const DealRepositoryPrisma: Layer.Layer<DealRepository> = Layer.scoped(
           // negócio já removido não trava a remoção do contato.
           prisma.deal.count({ where: { leadId, deletedAt: null, result: 'OPEN' } }),
         ),
+
+      countOpenByOwner: () =>
+        Effect.promise(() =>
+          /*
+           * O `GROUP BY` faz o trabalho no banco: o que atravessa a rede é uma
+           * linha por responsável. Os dois filtros do `where` são os mesmos do
+           * `countOpenByLead` — removido não conta, encerrado também não —, e é
+           * o que faz este número bater com o que o board mostra ao ser filtrado
+           * por essa mesma pessoa.
+           */
+          prisma.deal.groupBy({
+            by: ['ownerId'],
+            where: { deletedAt: null, result: 'OPEN' },
+            _count: { _all: true },
+          }),
+        ).pipe(Effect.map(toOwnerCounts)),
 
       list: (query) =>
         Effect.promise(async () => {

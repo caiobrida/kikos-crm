@@ -88,9 +88,12 @@ um modal com URL própria (`/negocios/:id`), que sobrevive ao recarregar, fecha 
 pode ser mandado a um colega. Dentro dele estão o dossiê do cliente, a linha do tempo, a caixa de
 comentário e as ações de editar, remover e encerrar.
 
-**Vendedores** ainda é um marcador: a fatia que a constrói (`.scratch/kikos-crm/issues/13`) era
-opcional e ficou de fora. A lista de vendedores que os formulários e os filtros consomem existe e
-funciona — é `GET /users?role=SELLER`.
+**Vendedores** é o time: avatar, nome, e-mail e, ao lado de cada um, quantos contatos e quantos
+negócios em aberto estão sob responsabilidade dele. Os dois números saem de um `GROUP BY` cada,
+com o mesmo filtro de remoção lógica de todas as outras leituras — então eles batem com o que a
+lista de Leads e o board mostram ao serem filtrados por essa mesma pessoa. É **somente leitura**:
+não há CRUD de User no CRM, o time vem do seed, e não existe tabela de vendedor — "vendedor" é um
+User com `role = SELLER` (ADR-0001).
 
 A **vitrine das primitivas** (botão, campo, selo, avatar, modal e tabela nas suas variações) fica
 em <http://localhost:5173/primitivas>, fora da barra lateral. O selo no topo dela consulta
@@ -184,7 +187,7 @@ Três decisões atravessam as quatro tabelas:
 ```
 POST   /auth/login          POST /auth/refresh
 POST   /auth/logout         GET  /auth/me
-GET    /users?role=SELLER
+GET    /users?role=SELLER          GET /users/workload?role=SELLER
 GET    /dashboard/summary
 
 GET    /leads?search&status&ownerId&sortBy&order&page&pageSize
@@ -456,7 +459,8 @@ atribuição e autoria a escolher qual das duas usar.
 
 Então há uma tabela `User` com `role: MANAGER | SELLER`, e:
 
-- a tela "Vendedores" é uma consulta por `role` (`GET /users?role=SELLER`), não uma entidade;
+- a tela "Vendedores" é uma consulta por `role` (`?role=SELLER`), não uma entidade — as rotas são
+  `/users` e `/users/workload`, e não `/sellers`;
 - as iniciais do avatar são derivadas do `name` na exibição; não existe coluna `initials`;
 - **`role` é rótulo, não permissão.** Autorização é binária: qualquer User autenticado enxerga e
   altera tudo. Se controle de acesso por papel entrar em escopo depois, o campo já está no lugar
@@ -585,6 +589,20 @@ gráfico**, e a resposta é o time inteiro: quem não fechou nada aparece com a 
 justamente o que um gráfico de performance existe para mostrar —, e a soma dos dois gráficos
 fecha. A ordem é alfabética, e não um ranking: uma barra que troca de lugar a cada venda fechada
 obrigaria a reler o eixo inteiro toda vez.
+
+#### A carga dos vendedores é outra rota, e não um campo a mais
+
+`GET /users/workload` devolve a mesma lista de `GET /users` com dois `GROUP BY` ao lado — contatos
+por responsável e negócios em aberto por responsável. Ela é separada porque as duas perguntas
+custam preços diferentes: o `<select>` de responsável de cada formulário e o filtro de vendedor de
+cada tela pedem `/users` várias vezes por sessão, e não têm por que pagar duas agregações para
+desenhar nomes numa lista suspensa.
+
+E, ao contrário do dashboard, as leituras **não** vão numa transação com `RepeatableRead`. Lá as
+duas metades descrevem o mesmo negócio por dois lados e não podem se contradizer; aqui os dois
+números contam tabelas diferentes, e não há invariante entre eles que um commit no meio possa
+quebrar. O que a tela promete é bater com a lista de Leads e com o board, e isso quem garante é o
+filtro de remoção lógica da camada de repositório.
 
 ### O status do Lead é sincronizado, não derivado
 
@@ -754,6 +772,10 @@ curl -s -b /tmp/kikos.txt -X DELETE localhost:3333/leads/COLE_O_ID_DO_LEAD
 
 # O dashboard, agregado no banco.
 curl -s -b /tmp/kikos.txt 'localhost:3333/dashboard/summary'
+
+# A carga do time: contatos e negócios em aberto por responsável. Os números
+# batem com `?ownerId=` na lista de Leads e no board.
+curl -s -b /tmp/kikos.txt 'localhost:3333/users/workload?role=SELLER'
 ```
 
 ## Fora de escopo
@@ -767,7 +789,7 @@ Escolhas conscientes, não pendências esquecidas:
   Postgres de desenvolvimento. CI de qualidade e testes está em escopo, e roda.
 - **OAuth / "Login via Google Workspace"** e **"Esqueceu sua senha?"** — os dois botões do mockup
   são decorativos.
-- **CRUD de User.** Usuários vêm do seed, e a tela de Vendedores seria somente leitura.
+- **CRUD de User.** Usuários vêm do seed, e a tela de Vendedores é somente leitura.
 - **Controle de acesso por papel.** Qualquer User autenticado vê e altera tudo.
 - **Revogação de sessão individual por dispositivo.** `tokenVersion` derruba todas as sessões do
   User de uma vez.
@@ -777,9 +799,6 @@ Escolhas conscientes, não pendências esquecidas:
 - **Notificações, e-mail, upload, exportação, campos personalizados, múltiplos pipelines.**
 - **Fidelidade pixel-perfect ao Figma.** A identidade visual é reconhecível; o layout exato não
   era requisito.
-- **A tela de Vendedores**, cuja fatia era explicitamente opcional e não coube no tempo. O item da
-  barra lateral leva a um marcador; o endpoint que a alimentaria já existe e é consumido pelos
-  filtros e formulários.
 
 ## O que seria diferente em produção
 
